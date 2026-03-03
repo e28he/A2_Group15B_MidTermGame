@@ -1,0 +1,36 @@
+:root {
+  --bg-1: #f6f9ff;
+  --bg-2: #dcecff;
+  --panel: #ffffffcc;
+  --ink: #223055;
+  --accent: #73b9ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: radial-gradient(circle at 20% 20%, #fff7db, var(--bg-1) 50%, var(--bg-2));
+  color: var(--ink);
+  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  padding: 10px;
+}
+
+canvas {
+  display: block;
+  max-width: min(100vw - 20px, 1280px);
+  max-height: min(100vh - 20px, 720px);
+  width: auto !important;
+  height: auto !important;
+  border-radius: 18px;
+  box-shadow: 0 20px 55px #435f9b33;
+}
