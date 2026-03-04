@@ -89,7 +89,8 @@ function resetGame() {
     selectedArm: null,
     lockedArm: null,
     selectedChanges: [],
-    armTip: createVector(width * 0.5, height * 0.45),
+    // move initial arm tip up slightly to match the octopus vertical shift
+    armTip: createVector(width * 0.5, height * 0.36),
     hoverStation: null,
     hoverSince: 0,
     challenge: null,
@@ -850,7 +851,7 @@ function station(name) {
     // spread stations more evenly so their 120px wide panels don't overlap
     coffee: { x: width * 0.12, y, r: 56, label: "Coffee" },
     milk: { x: width * 0.26, y, r: 56, label: "Milk" },
-    ice: { x: width * 0.40, y, r: 56, label: "Ice" },
+    ice: { x: width * 0.4, y, r: 56, label: "Ice" },
     syrup: { x: width * 0.54, y, r: 56, label: "Syrup" },
     foam: { x: width * 0.68, y, r: 56, label: "Foam" },
     // move serve further to the right and slightly higher to avoid overlapping Foam
@@ -862,7 +863,8 @@ function station(name) {
 function armBase(arm) {
   const bob = sin(millis() * 0.002) * 10;
   const x = width * 0.5;
-  const y = height * 0.43 + bob;
+  // raise baseline further so tentacles clear the ingredient panels
+  const y = height * 0.34 + bob;
   const map = {
     topLeft: createVector(x - 75, y + 60),
     bottomLeft: createVector(x - 25, y + 70),
@@ -905,7 +907,8 @@ function drawBackdrop() {
 }
 
 function drawScene() {
-  const cy = height * 0.62;
+  // move counter down slightly so the raised octopus has space
+  const cy = height * 0.67;
   setShadow(15, "rgba(0,0,0,0.1)");
   fill(250, 248, 240, 180);
   rect(56, 92, width - 112, 360, 14);
@@ -1030,7 +1033,8 @@ function drawArms() {
 function drawOctopus() {
   const bob = sin(millis() * 0.002) * 10;
   const x = width * 0.5;
-  const y = height * 0.43 + bob;
+  // raise the octopus further so it clears the ingredient stations
+  const y = height * 0.34 + bob;
   const mode =
     game.state === STATES.TANGLED ||
     game.state === STATES.UNTANGLE ||
@@ -1137,7 +1141,7 @@ function drawSpiralEye(x, y) {
 function defaultArmTip(arm) {
   const bob = sin(millis() * 0.002) * 10;
   const x = width * 0.5;
-  const y = height * 0.43 + bob;
+  const y = height * 0.34 + bob;
   const t = millis() * 0.002;
   // Make them rest closely beneath the body with a slight wiggle
   if (arm === "topLeft")
