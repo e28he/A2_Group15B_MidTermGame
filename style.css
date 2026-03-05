@@ -59,7 +59,8 @@ body {
 #mode-select-hint {
   position: absolute;
   left: 50%;
-  bottom: 17%;
+  top: 7.5%;
+  bottom: auto;
   transform: translateX(-50%);
   z-index: 2;
   width: min(760px, 86vw);
@@ -72,6 +73,68 @@ body {
   font: 600 15px/1.35 "Avenir Next", "Trebuchet MS", sans-serif;
   letter-spacing: 0.2px;
   box-shadow: 0 10px 24px rgba(26, 15, 8, 0.28);
+}
+
+#cosmetic-panel {
+  position: absolute;
+  left: 50%;
+  top: 17%;
+  bottom: auto;
+  transform: translateX(-50%);
+  z-index: 2;
+  width: min(760px, 88vw);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 244, 225, 0.65);
+  border-radius: 14px;
+  background: rgba(65, 41, 24, 0.52);
+  color: #fff7e9;
+  box-shadow: 0 10px 24px rgba(26, 15, 8, 0.28);
+}
+
+.cosmetic-title {
+  grid-column: 1 / -1;
+  font: 700 14px/1.2 "Avenir Next", "Trebuchet MS", sans-serif;
+  letter-spacing: 0.2px;
+  margin-bottom: 2px;
+}
+
+#cosmetic-panel label {
+  display: grid;
+  gap: 4px;
+  font: 600 12px/1.2 "Avenir Next", "Trebuchet MS", sans-serif;
+}
+
+#cosmetic-panel select {
+  width: 100%;
+  border: 1px solid rgba(255, 244, 225, 0.62);
+  border-radius: 9px;
+  background: rgba(255, 248, 236, 0.92);
+  color: #6f4b2f;
+  font: 600 13px/1.2 "Avenir Next", "Trebuchet MS", sans-serif;
+  padding: 7px 8px;
+}
+
+@media (max-width: 820px) {
+  #cosmetic-panel {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    top: 16.5%;
+  }
+  #mode-select-hint {
+    top: 7%;
+    bottom: auto;
+  }
+}
+
+@media (max-height: 760px) {
+  #mode-select-hint {
+    top: 4.5%;
+  }
+  #cosmetic-panel {
+    top: 13%;
+  }
 }
 
 #start-button {

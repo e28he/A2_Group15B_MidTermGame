@@ -32,6 +32,48 @@ const RECIPES = {
   "Iced Mocha": ["coffee", "syrup", "milk", "ice", "foam"],
 };
 
+const CUSTOMER_TRAITS = {
+  patient: {
+    label: "Patient",
+    color: [116, 171, 108],
+    scoreMul: 1.0,
+    penaltyMul: 0.85,
+    speedWindowSec: 34,
+    speedBonusMul: 0.9,
+    quotes: [
+      "No rush, take your time.",
+      "A smooth cup is worth the wait.",
+      "I can wait for the perfect brew.",
+    ],
+  },
+  picky: {
+    label: "Picky",
+    color: [194, 120, 92],
+    scoreMul: 1.24,
+    penaltyMul: 1.45,
+    speedWindowSec: 24,
+    speedBonusMul: 1.0,
+    quotes: [
+      "Please make it exactly right.",
+      "I want this one perfect.",
+      "Careful with the texture, please.",
+    ],
+  },
+  rushed: {
+    label: "Rushed",
+    color: [199, 154, 76],
+    scoreMul: 1.08,
+    penaltyMul: 1.1,
+    speedWindowSec: 18,
+    speedBonusMul: 1.65,
+    quotes: [
+      "Quick please, I'm late!",
+      "Fast cup, I need to run.",
+      "Speed over style right now!",
+    ],
+  },
+};
+
 const STATION_NAMES = ["coffee", "milk", "ice", "syrup", "foam", "serve"];
 
 const ARM_KEYS = {
@@ -56,6 +98,10 @@ let audioUnlocked = false;
 let startOverlayEl = null;
 let openingVideoEl = null;
 let startButtonEl = null;
+let selHatEl = null;
+let selCupEl = null;
+let selThemeEl = null;
+let selSoundEl = null;
 let backgroundImg = null;
 let profile = null;
 
@@ -88,6 +134,13 @@ const DEFAULT_PROFILE = {
     stationTheme: "caramel",
     soundPack: "classic",
   },
+};
+
+const COSMETIC_CATALOG = {
+  hats: ["chef", "barista", "royal"],
+  cupSkins: ["classic", "ceramic", "gold"],
+  stationThemes: ["caramel", "latte", "sunset"],
+  soundPacks: ["classic", "soft", "retro"],
 };
 
 // --- Helper Functions for Aesthetics ---
@@ -181,6 +234,10 @@ function bindStartOverlay() {
   startOverlayEl = document.getElementById("start-overlay");
   openingVideoEl = document.getElementById("opening-video");
   startButtonEl = document.getElementById("start-button");
+  selHatEl = document.getElementById("sel-hat");
+  selCupEl = document.getElementById("sel-cup");
+  selThemeEl = document.getElementById("sel-theme");
+  selSoundEl = document.getElementById("sel-sound");
 
   if (startOverlayEl) {
     startOverlayEl.addEventListener("pointerdown", () => {
@@ -194,6 +251,91 @@ function bindStartOverlay() {
       startShift();
     });
   }
+
+  bindCosmeticSelectors();
+  refreshStartCosmeticSelectors();
+}
+
+function bindCosmeticSelectors() {
+  if (selHatEl) {
+    selHatEl.addEventListener("change", () => {
+      if (!profile) return;
+      profile.selected.hat = selHatEl.value;
+      saveProfile();
+    });
+  }
+  if (selCupEl) {
+    selCupEl.addEventListener("change", () => {
+      if (!profile) return;
+      profile.selected.cupSkin = selCupEl.value;
+      saveProfile();
+    });
+  }
+  if (selThemeEl) {
+    selThemeEl.addEventListener("change", () => {
+      if (!profile) return;
+      profile.selected.stationTheme = selThemeEl.value;
+      saveProfile();
+    });
+  }
+  if (selSoundEl) {
+    selSoundEl.addEventListener("change", () => {
+      if (!profile) return;
+      profile.selected.soundPack = selSoundEl.value;
+      saveProfile();
+    });
+  }
+}
+
+function fillSelectorOptions(selectEl, allOptions, unlockedOptions, selected) {
+  if (!selectEl) return;
+  selectEl.innerHTML = "";
+  let hasSelected = false;
+  const unlocked = new Set(unlockedOptions || []);
+  for (const v of allOptions || []) {
+    const op = document.createElement("option");
+    op.value = v;
+    const isUnlocked = unlocked.has(v);
+    op.textContent = isUnlocked
+      ? labelUnlockValue(v)
+      : `${labelUnlockValue(v)} (Locked)`;
+    op.disabled = !isUnlocked;
+    op.selected = isUnlocked && v === selected;
+    if (op.selected) hasSelected = true;
+    selectEl.appendChild(op);
+  }
+  if (!hasSelected) {
+    const fallback = (allOptions || []).find((v) => unlocked.has(v));
+    if (fallback) selectEl.value = fallback;
+  }
+}
+
+function refreshStartCosmeticSelectors() {
+  if (!profile) return;
+  fillSelectorOptions(
+    selHatEl,
+    COSMETIC_CATALOG.hats,
+    profile.unlocks.hats,
+    profile.selected.hat,
+  );
+  fillSelectorOptions(
+    selCupEl,
+    COSMETIC_CATALOG.cupSkins,
+    profile.unlocks.cupSkins,
+    profile.selected.cupSkin,
+  );
+  fillSelectorOptions(
+    selThemeEl,
+    COSMETIC_CATALOG.stationThemes,
+    profile.unlocks.stationThemes,
+    profile.selected.stationTheme,
+  );
+  fillSelectorOptions(
+    selSoundEl,
+    COSMETIC_CATALOG.soundPacks,
+    profile.unlocks.soundPacks,
+    profile.selected.soundPack,
+  );
 }
 
 function windowResized() {
@@ -249,6 +391,7 @@ function resetGame() {
     turboUntilMs: 0,
     progressionUpdated: false,
     newUnlocks: [],
+    narrativeToast: null,
   };
 
   for (let i = 0; i < 20; i++) {
@@ -266,13 +409,7 @@ function cycleSelection(group, dir = 1) {
   if (!profile || !profile.unlocks || !profile.selected) return;
   const arr = profile.unlocks[group];
   if (!arr || !arr.length) return;
-  const keyMap = {
-    hats: "hat",
-    cupSkins: "cupSkin",
-    stationThemes: "stationTheme",
-    soundPacks: "soundPack",
-  };
-  const selectedKey = keyMap[group];
+  const selectedKey = selectedKeyForGroup(group);
   if (!selectedKey) return;
   const current = profile.selected[selectedKey];
   const idx = max(0, arr.indexOf(current));
@@ -283,6 +420,16 @@ function cycleSelection(group, dir = 1) {
     text: `${groupLabel(group)} set: ${labelUnlockValue(arr[next])}`,
     untilMs: millis() + 1200,
   };
+}
+
+function selectedKeyForGroup(group) {
+  const keyMap = {
+    hats: "hat",
+    cupSkins: "cupSkin",
+    stationThemes: "stationTheme",
+    soundPacks: "soundPack",
+  };
+  return keyMap[group] || null;
 }
 
 function groupLabel(group) {
@@ -311,6 +458,7 @@ function startShift() {
 
 function showStartOverlay() {
   if (startOverlayEl) startOverlayEl.classList.remove("hidden");
+  refreshStartCosmeticSelectors();
   if (openingVideoEl) {
     openingVideoEl.currentTime = 0;
     openingVideoEl.play().catch(() => {});
@@ -477,6 +625,7 @@ function draw() {
   drawHeader();
   drawOrderCard();
   drawGuidePanel();
+  drawNarrativeFlavor();
 
   drawParticles();
 
@@ -489,6 +638,29 @@ function draw() {
   drawPowerUpBar();
   drawComboToast();
   if (game.state === STATES.GAME_OVER) drawGameOver();
+}
+
+function pickCustomerTrait() {
+  const r = random();
+  if (r < 0.34) return "patient";
+  if (r < 0.67) return "picky";
+  return "rushed";
+}
+
+function getCustomerMods() {
+  const trait = game?.currentOrder?.customer?.trait;
+  if (!trait || !CUSTOMER_TRAITS[trait]) {
+    return {
+      label: "Regular",
+      scoreMul: 1,
+      penaltyMul: 1,
+      speedWindowSec: 24,
+      speedBonusMul: 1,
+      color: [150, 130, 110],
+      quotes: [],
+    };
+  }
+  return CUSTOMER_TRAITS[trait];
 }
 
 function startButtonRect() {
@@ -738,6 +910,7 @@ function handleGameOverProgression() {
     }
   }
   game.newUnlocks = unlockedNow;
+  refreshStartCosmeticSelectors();
   saveProfile();
 }
 
@@ -1093,7 +1266,7 @@ function updateState() {
       if (game.selectedArm) updateArmReach();
       break;
     case STATES.ORDER_COMPLETE:
-      if (millis() - game.stateStartMs > 900) {
+      if (millis() - game.stateStartMs > 1300) {
         game.state = STATES.NEW_ORDER;
         game.stateStartMs = millis();
       }
@@ -1111,6 +1284,11 @@ function createOrder() {
       startTangles: game.tangles,
       startWrongHits: game.wrongStationHits,
       startArmSwitches: game.armSwitches,
+      customer: {
+        trait: "patient",
+        label: "Practice",
+        quote: "Practice run, no pressure.",
+      },
     };
     game.stepIndex = 0;
     game.selectedArm = null;
@@ -1130,6 +1308,9 @@ function createOrder() {
   if (game.lastDrink && shuffledPool.length > 1 && drink === game.lastDrink) {
     drink = shuffledPool.find((d) => d !== game.lastDrink) || drink;
   }
+  const trait = pickCustomerTrait();
+  const traitDef = CUSTOMER_TRAITS[trait];
+  const quote = random(traitDef.quotes);
   game.lastDrink = drink;
   game.currentOrder = {
     drink,
@@ -1138,6 +1319,15 @@ function createOrder() {
     startTangles: game.tangles,
     startWrongHits: game.wrongStationHits,
     startArmSwitches: game.armSwitches,
+    customer: {
+      trait,
+      label: traitDef.label,
+      quote,
+    },
+  };
+  game.narrativeToast = {
+    text: `Customer says: "${quote}"`,
+    untilMs: millis() + 3200,
   };
   game.stepIndex = 0;
   game.selectedArm = null;
@@ -1190,11 +1380,12 @@ function updateArmReach() {
     if (game.state === STATES.SERVE_DRINK) completeServeDrink();
     else beginChallenge(touched);
   } else {
+    const cmods = getCustomerMods();
     game.mistakes += 1;
     game.wrongStationHits += 1;
     game.combo = 0;
-    game.score = max(0, game.score - 5);
-    addTangle(touched, 8);
+    game.score = max(0, game.score - floor(5 * cmods.penaltyMul));
+    addTangle(touched, 8 * cmods.penaltyMul);
     addParticles(
       station(touched).x,
       station(touched).y,
@@ -1353,14 +1544,19 @@ function updateChallenge() {
 
 function successStep() {
   const mods = getRushModifiers();
+  const cmods = getCustomerMods();
   const waitSec = (millis() - game.currentOrder.createdMs) / 1000;
   const base = 45;
-  const speedBonus = max(0, 24 - waitSec * 0.9);
-  const precisionPenalty = game.mistakes * 1.1;
+  const speedBonus = max(0, (cmods.speedWindowSec - waitSec) * cmods.speedBonusMul);
+  const precisionPenalty = game.mistakes * 1.1 * cmods.penaltyMul;
   game.combo += 1;
   game.bestCombo = max(game.bestCombo, game.combo);
   const comboBonus = min(30, (game.combo - 1) * 4);
-  game.score += floor((base + speedBonus - precisionPenalty + comboBonus) * mods.scoreMul);
+  game.score += floor(
+    (base + speedBonus - precisionPenalty + comboBonus) *
+      mods.scoreMul *
+      cmods.scoreMul,
+  );
   triggerComboMilestone();
   playSfx("success");
   game.stepIndex += 1;
@@ -1373,6 +1569,7 @@ function successStep() {
 function completeServeDrink() {
   if (!game.selectedArm || !game.serveArmChosen) return;
   const mods = getRushModifiers();
+  const cmods = getCustomerMods();
   const timeTaken = (millis() - game.currentOrder.createdMs) / 1000;
   const tangleDelta = game.tangles - game.currentOrder.startTangles;
   const wrongDelta = game.wrongStationHits - game.currentOrder.startWrongHits;
@@ -1384,12 +1581,14 @@ function completeServeDrink() {
   const serveScore = floor(
     100 -
       timeTaken * 1.8 -
-      tangleDelta * 10 -
-      wrongDelta * 2 -
-      efficiencyPenalty,
+      tangleDelta * 10 * cmods.penaltyMul -
+      wrongDelta * 2 * cmods.penaltyMul -
+      efficiencyPenalty * cmods.penaltyMul,
   );
-  const rushBonus = timeTaken < 17 ? 20 : 0;
-  game.score += floor((max(25, serveScore) + rushBonus) * mods.scoreMul);
+  const rushBonus = timeTaken < cmods.speedWindowSec ? 20 * cmods.speedBonusMul : 0;
+  game.score += floor(
+    (max(25, serveScore) + rushBonus) * mods.scoreMul * cmods.scoreMul,
+  );
   game.ordersDone += 1;
   game.serveArmChosen = false;
   game.combo += 1;
@@ -1401,22 +1600,29 @@ function completeServeDrink() {
     color(115, 210, 145),
     18,
   );
+  if (game.currentOrder?.customer?.quote) {
+    game.narrativeToast = {
+      text: `Served! ${game.currentOrder.customer.label} customer: "${game.currentOrder.customer.quote}"`,
+      untilMs: millis() + 2200,
+    };
+  }
   playSfx("serve");
   game.state = STATES.ORDER_COMPLETE;
   game.stateStartMs = millis();
 }
 
 function failStep() {
+  const cmods = getCustomerMods();
   game.tangles += 1;
   game.mistakes += 1;
-  game.score = max(0, game.score - 18);
+  game.score = max(0, game.score - floor(18 * cmods.penaltyMul));
   game.challenge = null;
   game.combo = 0;
   playSfx("fail");
   game.untangleProgress = 0;
   game.state = STATES.TANGLED;
   game.stateStartMs = millis();
-  game.tangleMeter = constrain(game.tangleMeter + 20, 0, 100);
+  game.tangleMeter = constrain(game.tangleMeter + 20 * cmods.penaltyMul, 0, 100);
   game.stress = constrain(game.stress + 14, 0, 100);
 }
 
@@ -2312,7 +2518,7 @@ function drawOrderCard() {
   const x = 20;
   const y = 20;
   const w = 270;
-  const h = 252;
+  const h = 286;
 
   setShadow(14, "rgba(66,42,22,0.18)");
   fill(252, 245, 232, 232);
@@ -2333,6 +2539,26 @@ function drawOrderCard() {
   textStyle(BOLD);
   text(game.currentOrder.drink, x + 14, y + 40);
   textStyle(NORMAL);
+  const cmods = getCustomerMods();
+  const traitLabel = game.currentOrder.customer?.label || "Regular";
+  fill(cmods.color[0], cmods.color[1], cmods.color[2], 210);
+  rect(x + 14, y + 64, 92, 20, 999);
+  fill(255);
+  textSize(11);
+  textStyle(BOLD);
+  textAlign(CENTER, CENTER);
+  text(traitLabel, x + 60, y + 74);
+  textStyle(NORMAL);
+  textAlign(LEFT, TOP);
+  fill(128, 92, 64);
+  textSize(11);
+  text(
+    game.currentOrder.customer?.quote || "",
+    x + 112,
+    y + 66,
+    w - 126,
+    28,
+  );
 
   textSize(14);
   const displaySteps = [...game.currentOrder.steps, "serve"];
@@ -2355,13 +2581,13 @@ function drawOrderCard() {
           ? color(255, 227, 188, 235)
           : color(246, 236, 221, 225),
     );
-    rect(x + 14, y + 74 + i * 30, w - 28, 24, 12);
+    rect(x + 14, y + 104 + i * 30, w - 28, 24, 12);
 
     fill(
       done ? color(86, 146, 82) : now ? color(191, 116, 58) : color(121, 86, 57),
     );
     if (now || done) textStyle(BOLD);
-    text(`${i + 1}. ${labelStep(s)}`, x + 24, y + 80 + i * 30);
+    text(`${i + 1}. ${labelStep(s)}`, x + 24, y + 110 + i * 30);
     textStyle(NORMAL);
   }
 }
@@ -2382,7 +2608,10 @@ function drawGuidePanel() {
   if (game.state === STATES.SERVE_DRINK) {
     msg = game.selectedArm ? "Move to Serve" : "Pick arm to serve: W A S D";
   }
-  if (game.state === STATES.ORDER_COMPLETE) msg = "Order complete";
+  if (game.state === STATES.ORDER_COMPLETE) {
+    const label = game.currentOrder?.customer?.label || "Customer";
+    msg = `${label} customer served`;
+  }
   if (game.mode === "practice")
     msg = `Practice ${labelStep(game.practiceStep)}  |  Press Q to exit`;
   if (!msg) return;
@@ -2402,6 +2631,34 @@ function drawGuidePanel() {
   textSize(13);
   textStyle(BOLD);
   text(msg, width * 0.5, y + h * 0.53);
+  textStyle(NORMAL);
+}
+
+function drawNarrativeFlavor() {
+  if (!game.narrativeToast) return;
+  if (millis() > game.narrativeToast.untilMs) {
+    game.narrativeToast = null;
+    return;
+  }
+  if (game.state === STATES.IDLE || game.state === STATES.GAME_OVER) return;
+  const w = min(520, width * 0.52);
+  const h = 34;
+  const x = width * 0.5 - w * 0.5;
+  const powerupVisible =
+    game.state !== STATES.TRANSITION &&
+    game.state !== STATES.PRACTICE_SELECT &&
+    game.state !== STATES.GAME_OVER;
+  const hudTopY = powerupVisible ? height - 64 : height - 28;
+  const y = hudTopY - h - 20;
+  setShadow(8, "rgba(66,42,22,0.16)");
+  fill(252, 245, 232, 222);
+  rect(x, y, w, h, 999);
+  clearShadow();
+  fill(103, 70, 45);
+  textAlign(CENTER, CENTER);
+  textSize(13);
+  textStyle(BOLD);
+  text(game.narrativeToast.text, width * 0.5, y + 18);
   textStyle(NORMAL);
 }
 
