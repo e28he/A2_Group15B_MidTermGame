@@ -1,8 +1,8 @@
 const GAME = {
   width: 1280,
   height: 720,
-  durationSec: 180,
-  targetOrders: 15,
+  durationSec: 10,
+  targetOrders: 20,
 };
 
 const STATES = {
@@ -433,6 +433,9 @@ function resetGame() {
     narrativeToast: null,
     nextStage: null,
     level1PendingDrinks: [],
+    pendingDrinksByStage: {},
+    lastOrderSignature: null,
+    levelAtTimeout: null,
   };
   for (let i = 0; i < 20; i++)
     game.bubbles.push({
@@ -1324,8 +1327,12 @@ function updateGlobalMeters() {
   if (
     game.mode !== "practice" &&
     game.roundStartMs &&
-    (elapsed >= GAME.durationSec || game.ordersDone >= GAME.targetOrders)
+    elapsed >= GAME.durationSec
   ) {
+    game.levelAtTimeout =
+      game.state === STATES.LEVEL_COMPLETE && game.nextStage
+        ? game.nextStage
+        : game.stage;
     game.state = STATES.GAME_OVER;
     handleGameOverProgression();
   }
@@ -1349,7 +1356,10 @@ function updateState() {
       createOrder();
       game.state = STATES.ARM_CONTROL;
       game.stateStartMs = millis();
-      game.roundStartMs = millis(); // 此时才开始计算整局游戏的倒计时
+      // Start the shift timer once; do not reset between levels/orders.
+      if (game.mode !== "practice" && !game.roundStartMs) {
+        game.roundStartMs = millis();
+      }
       break;
 
     case STATES.ARM_CONTROL:
@@ -1405,42 +1415,36 @@ function createOrder() {
     game.hoverStation = null;
     return;
   }
-  const pool = STAGE_POOLS[game.stage];
-  let drink;
+  const pool = STAGE_POOLS[game.stage] || [];
+  const stageKey = `${game.stage}`;
+  if (!game.pendingDrinksByStage) game.pendingDrinksByStage = {};
+  if (!Array.isArray(game.pendingDrinksByStage[stageKey]))
+    game.pendingDrinksByStage[stageKey] = [];
 
-  // For Level 1, cycle through all drinks once before any repeat.
-  if (game.stage === 1) {
-    if (!Array.isArray(game.level1PendingDrinks))
-      game.level1PendingDrinks = [];
-    if (game.level1PendingDrinks.length === 0) {
-      game.level1PendingDrinks = shuffle([...pool], true);
-      if (
-        game.lastDrink &&
-        game.level1PendingDrinks.length > 1 &&
-        game.level1PendingDrinks[0] === game.lastDrink
-      ) {
-        const swapIndex = game.level1PendingDrinks.findIndex(
-          (d) => d !== game.lastDrink,
-        );
-        if (swapIndex > 0) {
-          const first = game.level1PendingDrinks[0];
-          game.level1PendingDrinks[0] = game.level1PendingDrinks[swapIndex];
-          game.level1PendingDrinks[swapIndex] = first;
-        }
-      }
-    }
-    drink = game.level1PendingDrinks.shift();
-  } else {
-    // For other levels, use random shuffling
-    const shuffledPool = shuffle([...pool], true);
-    drink = shuffledPool[0];
-    if (game.lastDrink && shuffledPool.length > 1 && drink === game.lastDrink)
-      drink = shuffledPool.find((d) => d !== game.lastDrink) || drink;
+  // Keep variety: cycle through a shuffled stage pool before repeating.
+  if (game.pendingDrinksByStage[stageKey].length === 0) {
+    game.pendingDrinksByStage[stageKey] = shuffle([...pool], true);
   }
+  const queue = game.pendingDrinksByStage[stageKey];
+  if (queue.length > 1) {
+    const firstSignature = orderSignature(queue[0]);
+    const swapIndex = queue.findIndex(
+      (d) => d !== game.lastDrink && orderSignature(d) !== game.lastOrderSignature,
+    );
+    const canImproveVariety =
+      queue[0] === game.lastDrink || firstSignature === game.lastOrderSignature;
+    if (canImproveVariety && swapIndex > 0) {
+      const first = queue[0];
+      queue[0] = queue[swapIndex];
+      queue[swapIndex] = first;
+    }
+  }
+  const drink = queue.shift();
   const trait = pickCustomerTrait();
   const traitDef = CUSTOMER_TRAITS[trait];
   const quote = random(traitDef.quotes);
   game.lastDrink = drink;
+  game.lastOrderSignature = orderSignature(drink);
   game.currentOrder = {
     drink,
     steps: [...RECIPES[drink]],
@@ -1465,6 +1469,11 @@ function createOrder() {
   game.serveArmChosen = false;
   game.challenge = null;
   game.hoverStation = null;
+}
+
+function orderSignature(drink) {
+  const steps = [...(RECIPES[drink] || [])].sort();
+  return steps.join("|");
 }
 
 function updateTasks() {
@@ -1630,11 +1639,7 @@ function completeServeDrink() {
     18,
   );
   playSfx("serve");
-  if (
-    ((game.stage === 1 && game.ordersDone === 5) ||
-      (game.stage > 1 && game.ordersDone % 3 === 0)) &&
-    game.stage < 4
-  ) {
+  if (game.ordersDone >= game.stage * 5 && game.stage < 4) {
     game.state = STATES.LEVEL_COMPLETE;
     game.stateStartMs = millis();
     game.nextStage = game.stage + 1;
@@ -1814,7 +1819,9 @@ function keyPressed() {
     return false;
   }
   if (game.state === STATES.TRANSITION && (key === " " || keyCode === ENTER)) {
-    game.roundStartMs = millis();
+    if (game.mode !== "practice" && !game.roundStartMs) {
+      game.roundStartMs = millis();
+    }
     game.state = STATES.NEW_ORDER;
     game.stateStartMs = millis();
     return false;
@@ -1982,7 +1989,9 @@ function mousePressed() {
   }
 
   if (game.state === STATES.TRANSITION) {
-    game.roundStartMs = millis();
+    if (game.mode !== "practice" && !game.roundStartMs) {
+      game.roundStartMs = millis();
+    }
     game.state = STATES.NEW_ORDER;
     game.stateStartMs = millis();
     return false;
@@ -2992,7 +3001,8 @@ function drawGameOver() {
   clearShadow();
   fill(235, 242, 255);
   rect(panelX, panelY, panelW, 90, 24, 24, 0, 0);
-  const grade = finalGrade();
+  const rankScore = finalRankScore();
+  const grade = finalGradeFromScore(rankScore);
   const stampScale = constrain(
     map(millis() - game.stateStartMs, 0, 400, 3, 1),
     1,
@@ -3033,7 +3043,7 @@ function drawGameOver() {
   textSize(20);
   textStyle(BOLD);
   text(
-    `Orders: ${game.ordersDone}   |   Final Score: ${floor(game.score)}`,
+    `Level Reached: ${game.levelAtTimeout || game.stage}/4   |   Orders: ${game.ordersDone}   |   Final Score: ${floor(game.score)}`,
     width * 0.5,
     statsY + 28,
   );
@@ -3045,6 +3055,49 @@ function drawGameOver() {
     width * 0.5,
     statsY + 62,
   );
+  const scaleMin = 0;
+  const scaleMax = 900;
+  const scaleX = statsX + 28;
+  const scaleY = statsY + 95;
+  const scaleW = statsW - 56;
+  const scoreClamped = constrain(rankScore, scaleMin, scaleMax);
+  const markerX = map(scoreClamped, scaleMin, scaleMax, scaleX, scaleX + scaleW);
+  const thresholds = [0, 360, 560, 760, 900];
+  const labels = ["C", "B", "A", "S"];
+  const segmentColors = [
+    color(222, 91, 96),
+    color(87, 153, 222),
+    color(75, 192, 118),
+    color(255, 215, 0),
+  ];
+  stroke(214, 223, 240);
+  strokeWeight(2);
+  noFill();
+  rect(scaleX, scaleY - 6, scaleW, 12, 999);
+  noStroke();
+  for (let i = 0; i < labels.length; i++) {
+    const sx = map(thresholds[i], scaleMin, scaleMax, scaleX, scaleX + scaleW);
+    const ex = map(
+      thresholds[i + 1],
+      scaleMin,
+      scaleMax,
+      scaleX,
+      scaleX + scaleW,
+    );
+    fill(segmentColors[i]);
+    rect(sx, scaleY - 6, ex - sx, 12, i === 0 ? 999 : 0, i === 0 ? 999 : 0, i === labels.length - 1 ? 999 : 0, i === labels.length - 1 ? 999 : 0);
+    fill(55, 72, 108);
+    textSize(11);
+    textStyle(BOLD);
+    text(labels[i], (sx + ex) * 0.5, scaleY + 17);
+  }
+  fill(37, 52, 90);
+  triangle(markerX, scaleY - 16, markerX - 7, scaleY - 3, markerX + 7, scaleY - 3);
+  textSize(12);
+  textStyle(NORMAL);
+  textAlign(RIGHT, CENTER);
+  text(`Rank Score: ${floor(rankScore)}`, statsX + statsW - 12, scaleY - 18);
+  textAlign(CENTER, CENTER);
   const progressY = statsY + 138;
   fill(241, 247, 235, 238);
   rect(statsX, progressY, statsW, 146, 14);
@@ -3122,17 +3175,19 @@ function drawGameOver() {
   textStyle(NORMAL);
 }
 
-function finalGrade() {
-  const s =
-    game.score +
-    game.ordersDone * 85 +
-    game.bestCombo * 10 -
-    game.mistakes * 14 -
-    game.tangles * 16;
-  if (s > 760) return "S";
-  if (s > 560) return "A";
-  if (s > 360) return "B";
+function finalRankScore() {
+  return floor(game.score);
+}
+
+function finalGradeFromScore(score) {
+  if (score > 760) return "S";
+  if (score > 560) return "A";
+  if (score > 360) return "B";
   return "C";
+}
+
+function finalGrade() {
+  return finalGradeFromScore(finalRankScore());
 }
 
 function labelStep(step) {
