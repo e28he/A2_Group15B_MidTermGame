@@ -1,7 +1,7 @@
 const GAME = {
   width: 1280,
   height: 720,
-  durationSec: 10,
+  durationSec: 180,
   targetOrders: 20,
 };
 
