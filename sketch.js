@@ -135,6 +135,9 @@ const POWERUPS = {
   focus: { key: "2", name: "Focus Shot", cost: 100 },
   turbo: { key: "3", name: "Turbo Hand", cost: 90 },
 };
+const AUDIO_MASTER_GAIN = 0.48;
+const AUDIO_MUSIC_GAIN_MUL = 1.45;
+const AUDIO_SFX_GAIN_MUL = 1.65;
 
 let game;
 let audioEngine = null,
@@ -534,7 +537,7 @@ function startAudioEngine() {
   const delay = ctx.createDelay();
   const feedback = ctx.createGain();
   if (!audioEngine) {
-    master.gain.value = 0.25;
+    master.gain.value = AUDIO_MASTER_GAIN;
     delay.delayTime.value = 0.25;
     feedback.gain.value = 0.3;
     delay.connect(feedback);
@@ -583,8 +586,9 @@ function playMusicStep() {
       130.81, 130.81, 146.83, 146.83, 164.81, 164.81, 146.83, 130.81,
     ];
     const i = musicStep % intro.length;
-    playTone(intro[i], 0.22, "sine", 0.028);
-    if (i % 2 === 0) playTone(bass[i], 0.35, "triangle", 0.018, 0.02);
+    playTone(intro[i], 0.22, "sine", 0.028 * AUDIO_MUSIC_GAIN_MUL);
+    if (i % 2 === 0)
+      playTone(bass[i], 0.35, "triangle", 0.018 * AUDIO_MUSIC_GAIN_MUL, 0.02);
     musicStep += 1;
     return;
   }
@@ -592,31 +596,33 @@ function playMusicStep() {
   const bass = [130.81, 130.81, 146.83, 146.83, 164.81, 164.81, 146.83, 130.81];
   const i = musicStep % prog.length;
   const stressTone = map(game.stress, 0, 100, 0, 18);
-  playTone(prog[i] + stressTone, 0.2, "sine", 0.04);
-  if (i % 2 === 0) playTone(bass[i], 0.3, "triangle", 0.03, 0.01);
+  playTone(prog[i] + stressTone, 0.2, "sine", 0.04 * AUDIO_MUSIC_GAIN_MUL);
+  if (i % 2 === 0)
+    playTone(bass[i], 0.3, "triangle", 0.03 * AUDIO_MUSIC_GAIN_MUL, 0.01);
   musicStep += 1;
 }
 
 function playSfx(kind) {
   if (!audioEngine || !audioEngine.ctx) return;
   const mul = getSoundFreqMul();
+  const sfxGain = AUDIO_SFX_GAIN_MUL;
   if (kind === "start") {
-    playTone(392 * mul, 0.15, "triangle", 0.08);
-    playTone(523.25 * mul, 0.25, "sine", 0.08, 0.1);
+    playTone(392 * mul, 0.15, "triangle", 0.08 * sfxGain);
+    playTone(523.25 * mul, 0.25, "sine", 0.08 * sfxGain, 0.1);
   } else if (kind === "select") {
-    playTone(440 * mul, 0.08, "square", 0.02);
+    playTone(440 * mul, 0.08, "square", 0.02 * sfxGain);
   } else if (kind === "success") {
-    playTone(523.25 * mul, 0.1, "sine", 0.06);
-    playTone(659.25 * mul, 0.15, "triangle", 0.05, 0.05);
+    playTone(523.25 * mul, 0.1, "sine", 0.06 * sfxGain);
+    playTone(659.25 * mul, 0.15, "triangle", 0.05 * sfxGain, 0.05);
   } else if (kind === "fail") {
-    playTone(180 * mul, 0.15, "sawtooth", 0.04);
-    playTone(130 * mul, 0.25, "sawtooth", 0.05, 0.05);
+    playTone(180 * mul, 0.15, "sawtooth", 0.04 * sfxGain);
+    playTone(130 * mul, 0.25, "sawtooth", 0.05 * sfxGain, 0.05);
   } else if (kind === "untangle") {
-    playTone((320 + random(-20, 40)) * mul, 0.05, "square", 0.02);
+    playTone((320 + random(-20, 40)) * mul, 0.05, "square", 0.02 * sfxGain);
   } else if (kind === "serve") {
-    playTone(523.25 * mul, 0.1, "triangle", 0.05);
-    playTone(659.25 * mul, 0.1, "triangle", 0.05, 0.06);
-    playTone(783.99 * mul, 0.2, "sine", 0.06, 0.12);
+    playTone(523.25 * mul, 0.1, "triangle", 0.05 * sfxGain);
+    playTone(659.25 * mul, 0.1, "triangle", 0.05 * sfxGain, 0.06);
+    playTone(783.99 * mul, 0.2, "sine", 0.06 * sfxGain, 0.12);
   }
 }
 
@@ -1294,32 +1300,40 @@ function drawMorphTransitionOctopus(x, y, t, scaleMul = 1) {
 function updateGlobalMeters() {
   if (game.state === STATES.GAME_OVER) return;
   const dt = deltaTime / 1000;
+  const isTutorialStage = game.mode !== "practice" && game.stage === 1;
 
   // 1. 压力系统：这是 Tangle 的动力源
   updateStress();
 
-  // 2. 只有按住 R (Calm Brew) 才能救命
-  if (keyIsDown(82)) {
-    game.tangleMeter = max(0, game.tangleMeter - 45 * dt); // 快速下降
-    game.stress = max(0, game.stress - 30 * dt);
-    // 增加一点视觉反馈：按住 R 时冒蓝光
-    addParticles(width - 200, 50, color(100, 200, 255), 2);
-  }
+  if (isTutorialStage) {
+    // Level 1 tutorial: no stress/tangle pressure.
+    game.stress = 0;
+    game.tangleMeter = 0;
+    game.lockedArm = null;
+  } else {
+    // 2. 只有按住 R (Calm Brew) 才能救命
+    if (keyIsDown(82)) {
+      game.tangleMeter = max(0, game.tangleMeter - 45 * dt); // 快速下降
+      game.stress = max(0, game.stress - 30 * dt);
+      // 增加一点视觉反馈：按住 R 时冒蓝光
+      addParticles(width - 200, 50, color(100, 200, 255), 2);
+    }
 
-  // 3. 惩罚：Tangle > 80% 随机锁死一只手
-  if (game.tangleMeter >= 80 && !game.lockedArm) {
-    const arms = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
-    game.lockedArm = random(arms);
-  }
-  if (game.tangleMeter < 60) game.lockedArm = null;
+    // 3. 惩罚：Tangle > 80% 随机锁死一只手
+    if (game.tangleMeter >= 80 && !game.lockedArm) {
+      const arms = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
+      game.lockedArm = random(arms);
+    }
+    if (game.tangleMeter < 60) game.lockedArm = null;
 
-  // 4. 爆表：Tangle 到 100% 强制进入打结状态
-  if (
-    game.tangleMeter >= 100 &&
-    game.state !== STATES.TANGLED &&
-    game.state !== STATES.UNTANGLE
-  ) {
-    triggerPhysicalTangle();
+    // 4. 爆表：Tangle 到 100% 强制进入打结状态
+    if (
+      game.tangleMeter >= 100 &&
+      game.state !== STATES.TANGLED &&
+      game.state !== STATES.UNTANGLE
+    ) {
+      triggerPhysicalTangle();
+    }
   }
 
   // 5. 倒计时检查
@@ -1339,6 +1353,16 @@ function updateGlobalMeters() {
 }
 
 function updateState() {
+  if (
+    game.mode !== "practice" &&
+    game.stage === 1 &&
+    !game.guidePopup.open &&
+    game.currentOrder
+  ) {
+    if (game.state === STATES.ARM_CONTROL) maybeOpenLevelOneGuide(currentStep());
+    if (game.state === STATES.SERVE_DRINK) maybeOpenLevelOneGuide("serve");
+  }
+
   switch (game.state) {
     case STATES.IDLE:
     case STATES.PRACTICE_SELECT:
@@ -1651,6 +1675,7 @@ function completeServeDrink() {
 }
 
 function failStep() {
+  if (game.mode !== "practice" && game.stage === 1) return;
   const cmods = getCustomerMods();
   game.tangles += 1;
   game.mistakes += 1;
@@ -1671,6 +1696,7 @@ function failStep() {
 }
 
 function addTangle(stationName, base) {
+  if (game.mode !== "practice" && game.stage === 1) return;
   const mods = getRushModifiers();
   let gain = base;
   const now = millis();
@@ -1715,6 +1741,10 @@ function updateUntangleState() {
 function updateStress() {
   const dt = deltaTime / 1000;
   if (!game.currentOrder || game.state !== STATES.ARM_CONTROL) return;
+  if (game.mode !== "practice" && game.stage === 1) {
+    game.stress = 0;
+    return;
+  }
 
   // 1. 基础压力：激活的任务越多，章鱼越慌
   const activeCount = Object.keys(game.activeTasks).length;
@@ -1752,6 +1782,7 @@ function doSegmentsIntersect(p1, p2, p3, p4) {
 
 function checkTentacleCrossing() {
   if (game.state !== STATES.ARM_CONTROL) return;
+  if (game.mode !== "practice" && game.stage === 1) return;
 
   const keys = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
 
@@ -1778,6 +1809,7 @@ function checkTentacleCrossing() {
 }
 
 function triggerPhysicalTangle() {
+  if (game.mode !== "practice" && game.stage === 1) return;
   game.tangles += 1;
   game.score = max(0, game.score - 15);
   game.stress = constrain(game.stress + 20, 0, 100);
@@ -1839,7 +1871,7 @@ function keyPressed() {
   }
   if (key.toUpperCase() === "M" && audioEngine?.master) {
     const muted = audioEngine.master.gain.value < 0.01;
-    audioEngine.master.gain.value = muted ? 0.25 : 0.0001;
+    audioEngine.master.gain.value = muted ? AUDIO_MASTER_GAIN : 0.0001;
     return false;
   }
   if (
@@ -1934,6 +1966,18 @@ function keyPressed() {
 function mousePressed() {
   game.noInputSince = millis();
   ensureAudioUnlocked();
+  if (game.guidePopup.open) {
+    const b = guideCloseButtonRect();
+    if (
+      mouseX > b.x &&
+      mouseX < b.x + b.w &&
+      mouseY > b.y &&
+      mouseY < b.y + b.h
+    ) {
+      closeChallengeGuide();
+    }
+    return false;
+  }
   if (game.state === STATES.HOW_TO_PLAY) {
     const sz = sceneScale();
     const w = 600 * sz,
@@ -2019,18 +2063,6 @@ function mousePressed() {
       resetGame();
       return false;
     }
-  }
-  if (game.guidePopup.open) {
-    const b = guideCloseButtonRect();
-    if (
-      mouseX > b.x &&
-      mouseX < b.x + b.w &&
-      mouseY > b.y &&
-      mouseY < b.y + b.h
-    ) {
-      closeChallengeGuide();
-    }
-    return false;
   }
   if (game.state === STATES.IDLE) {
     const b = startButtonRect();
@@ -3280,5 +3312,157 @@ function drawIngredientIcon(step, x, y, size) {
   pop();
 }
 
-function drawChallengeGuidePopup() {} // Not used in multitask
-function closeChallengeGuide() {}
+function maybeOpenLevelOneGuide(step) {
+  if (!step) return;
+  if (game.seenGuides?.[step]) return;
+  game.seenGuides[step] = true;
+  game.guidePopup = { open: true, step, openedMs: millis() };
+}
+
+function levelOneGuideContent(step) {
+  if (step === "coffee") {
+    return {
+      title: "Coffee Challenge",
+      lines: [
+        "Drag one arm to COFFEE station.",
+        "Hold [E] continuously to fill the bar.",
+        "If you release [E], progress can drop.",
+      ],
+    };
+  }
+  if (step === "milk") {
+    return {
+      title: "Milk Challenge",
+      lines: [
+        "Drag one arm to MILK station.",
+        "Tap [T] repeatedly (do not hold).",
+        "Keep tapping so the bar does not drain.",
+      ],
+    };
+  }
+  if (step === "foam") {
+    return {
+      title: "Foam Challenge (Detailed)",
+      lines: [
+        "Drag one arm to FOAM station.",
+        "Press [H] to push the marker upward.",
+        "Goal: keep marker inside GREEN zone while bar fills.",
+        "If marker falls too low/high, progress slows or drops.",
+      ],
+    };
+  }
+  if (step === "ice") {
+    return {
+      title: "Ice Challenge",
+      lines: [
+        "Drag one arm to ICE station.",
+        "Alternate [X] then [C], then [X], then [C].",
+        "Pressing the same key twice gives less progress.",
+      ],
+    };
+  }
+  if (step === "syrup") {
+    return {
+      title: "Syrup Challenge (Detailed)",
+      lines: [
+        "Drag one arm to SYRUP station.",
+        "Watch the rhythm pulse/circle timing.",
+        "Press [SPACE] right on the beat moment.",
+        "Early/late presses reduce progress; accurate timing fills fast.",
+      ],
+    };
+  }
+  if (step === "serve") {
+    return {
+      title: "Serve Step",
+      lines: [
+        "All tasks are done.",
+        "Drag any free arm to SERVE station.",
+        "That submits the drink and completes the order.",
+      ],
+    };
+  }
+  return {
+    title: "Level 1 Tutorial",
+    lines: ["Follow the station instruction to complete this step."],
+  };
+}
+
+function challengeGuideRect() {
+  const w = min(820, width * 0.72);
+  const h = min(400, height * 0.54);
+  const x = width * 0.5 - w * 0.5;
+  const y = height * 0.5 - h * 0.5;
+  return { x, y, w, h };
+}
+
+function guideCloseButtonRect() {
+  const p = challengeGuideRect();
+  return { x: p.x + p.w - 128, y: p.y + p.h - 52, w: 104, h: 34 };
+}
+
+function drawChallengeGuidePopup() {
+  if (!game.guidePopup?.open) return;
+  const p = challengeGuideRect();
+  const c = levelOneGuideContent(game.guidePopup.step);
+
+  setShadow(24, "rgba(0,0,0,0.35)");
+  fill(255, 252, 246, 252);
+  stroke(179, 144, 103);
+  strokeWeight(3);
+  rect(p.x, p.y, p.w, p.h, 22);
+  clearShadow();
+
+  const headerGrad = drawingContext.createLinearGradient(p.x, p.y, p.x + p.w, p.y);
+  headerGrad.addColorStop(0, "#F3E4C9");
+  headerGrad.addColorStop(1, "#E9D5B4");
+  drawingContext.fillStyle = headerGrad;
+  noStroke();
+  rect(p.x, p.y, p.w, 58, 22, 22, 0, 0);
+
+  fill(90, 60, 40);
+  textAlign(LEFT, CENTER);
+  textSize(35);
+  textStyle(BOLD);
+  text(c.title, p.x + 22, p.y + 29);
+
+  fill(118, 86, 58);
+  textSize(20);
+  textStyle(NORMAL);
+  text("Level 1 Tutorial Tip", p.x + p.w - 250, p.y + 29);
+
+  fill(82, 58, 41);
+  textAlign(LEFT, TOP);
+  textSize(25);
+  textStyle(BOLD);
+  text("How to do this step:", p.x + 24, p.y + 76);
+
+  textStyle(NORMAL);
+  textSize(21);
+  let y = p.y + 108;
+  for (let i = 0; i < c.lines.length; i++) {
+    text(`${i + 1}. ${c.lines[i]}`, p.x + 28, y, p.w - 56, 66);
+    y += 56;
+  }
+
+  const b = guideCloseButtonRect();
+  const hover = mouseX > b.x && mouseX < b.x + b.w && mouseY > b.y && mouseY < b.y + b.h;
+  fill(hover ? color(115, 185, 118) : color(98, 170, 104));
+  rect(b.x, b.y, b.w, b.h, 10);
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  textSize(19);
+  text("Got it", b.x + b.w * 0.5, b.y + b.h * 0.52);
+
+  fill(122, 90, 62);
+  textStyle(NORMAL);
+  textSize(15);
+  text("Press ENTER / SPACE / ESC / C to close", p.x + p.w * 0.5, p.y + p.h - 14);
+}
+
+function closeChallengeGuide() {
+  if (!game.guidePopup) return;
+  game.guidePopup.open = false;
+  game.guidePopup.step = null;
+}
