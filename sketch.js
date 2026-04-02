@@ -10,6 +10,7 @@ const STATES = {
   HOW_TO_PLAY: "HOW_TO_PLAY",
   PRACTICE_SELECT: "PRACTICE_SELECT",
   TRANSITION: "TRANSITION",
+  TUTORIAL_RECOVERY: "TUTORIAL_RECOVERY",
   NEW_ORDER: "NEW_ORDER",
   ARM_SELECTION: "ARM_SELECTION",
   ARM_CONTROL: "ARM_CONTROL",
@@ -73,16 +74,71 @@ const RECIPES = {
 };
 
 const STAGE_POOLS = {
-  1: [
+  0: [
     "Americano",
     "Milk Sample",
     "Foam Practice",
     "Ice Practice",
     "Syrup Practice",
   ],
-  2: ["Latte", "Iced Coffee", "Syrup Coffee"],
-  3: ["Iced Latte", "Foam Latte", "Mocha Latte"],
-  4: ["Special Latte", "Iced Deluxe Latte"],
+  2: [
+    "Americano",
+    "Milk Sample",
+    "Foam Practice",
+    "Ice Practice",
+    "Syrup Practice",
+  ],
+  3: ["Latte", "Iced Coffee", "Syrup Coffee"],
+  4: ["Iced Latte", "Foam Latte", "Mocha Latte"],
+  5: ["Special Latte", "Iced Deluxe Latte"],
+};
+
+const STAGE_META = {
+  0: {
+    label: "Level 0",
+    title: "Tutorial: Guided Foundations",
+    summary: "A no-pressure walkthrough for single-step drinks and recovery basics.",
+    completeText: "Tutorial complete. You are ready to enter the main shift.",
+    targetOrders: 5,
+    nextStage: 2,
+    guideLabel: "Tutorial Tip",
+  },
+  2: {
+    label: "Level 2",
+    title: "Foundations: Single-Step Rush",
+    summary: "Former Level 1, now shifted forward into the main run.",
+    completeText: "Good start. Basic station control is locked in.",
+    targetOrders: 5,
+    nextStage: 3,
+    guideLabel: "Level 2 Tip",
+  },
+  3: {
+    label: "Level 3",
+    title: "Beginner: Two-Step Multitasking",
+    summary: "Manage your first real multitask drinks without losing flow.",
+    completeText: "You are handling multiple stations much better now.",
+    targetOrders: 5,
+    nextStage: 4,
+    guideLabel: "Level 3 Tip",
+  },
+  4: {
+    label: "Level 4",
+    title: "Intermediate: Three-Step Challenges",
+    summary: "More timing pressure, more movement, more coordination mistakes to avoid.",
+    completeText: "Strong work. Complex coordination is starting to look natural.",
+    targetOrders: 5,
+    nextStage: 5,
+    guideLabel: "Level 4 Tip",
+  },
+  5: {
+    label: "Level 5",
+    title: "Expert: Four-Step Mastery",
+    summary: "Everything is active now. This is the full barista chaos test.",
+    completeText: "Outstanding. You reached the highest level in the shift.",
+    targetOrders: null,
+    nextStage: null,
+    guideLabel: "Level 5 Tip",
+  },
 };
 
 const CUSTOMER_TRAITS = {
@@ -144,9 +200,12 @@ let audioEngine = null,
   musicTimer = null,
   musicStep = 0,
   audioUnlocked = false;
+let viewportResizeQueued = false;
 let startOverlayEl = null,
   openingVideoEl = null,
   startButtonEl = null,
+  tutorialButtonEl = null,
+  practiceButtonEl = null,
   selHatEl = null,
   selCupEl = null,
   selThemeEl = null,
@@ -257,10 +316,45 @@ function preload() {
   backgroundImg = loadImage("Assets/background.png");
 }
 
+function currentViewportSize() {
+  const vv = window.visualViewport;
+  if (vv) {
+    return {
+      width: max(1, floor(vv.width)),
+      height: max(1, floor(vv.height)),
+    };
+  }
+  return {
+    width: max(1, floor(window.innerWidth || windowWidth || GAME.width)),
+    height: max(1, floor(window.innerHeight || windowHeight || GAME.height)),
+  };
+}
+
+function syncCanvasToViewport() {
+  const viewport = currentViewportSize();
+  resizeCanvas(viewport.width, viewport.height);
+}
+
+function queueViewportSync() {
+  if (viewportResizeQueued) return;
+  viewportResizeQueued = true;
+  requestAnimationFrame(() => {
+    viewportResizeQueued = false;
+    syncCanvasToViewport();
+  });
+}
+
 function setup() {
-  const cnv = createCanvas(windowWidth, windowHeight);
+  const viewport = currentViewportSize();
+  const cnv = createCanvas(viewport.width, viewport.height);
   cnv.parent("app");
+  pixelDensity(1);
   textFont("Avenir Next");
+  window.addEventListener("orientationchange", queueViewportSync);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", queueViewportSync);
+    window.visualViewport.addEventListener("scroll", queueViewportSync);
+  }
   loadProfile();
   bindStartOverlay();
   resetGame();
@@ -270,6 +364,8 @@ function bindStartOverlay() {
   startOverlayEl = document.getElementById("start-overlay");
   openingVideoEl = document.getElementById("opening-video");
   startButtonEl = document.getElementById("start-button");
+  tutorialButtonEl = document.getElementById("tutorial-button");
+  practiceButtonEl = document.getElementById("practice-button");
   selHatEl = document.getElementById("sel-hat");
   selCupEl = document.getElementById("sel-cup");
   selThemeEl = document.getElementById("sel-theme");
@@ -280,6 +376,10 @@ function bindStartOverlay() {
       startAudioEngine();
     });
   if (startButtonEl) startButtonEl.addEventListener("click", startShift);
+  if (tutorialButtonEl)
+    tutorialButtonEl.addEventListener("click", startTutorialShift);
+  if (practiceButtonEl)
+    practiceButtonEl.addEventListener("click", enterPracticeSelect);
   bindCosmeticSelectors();
   refreshStartCosmeticSelectors();
 }
@@ -363,14 +463,14 @@ function refreshStartCosmeticSelectors() {
 }
 
 function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
+  queueViewportSync();
 }
 
 function resetGame() {
   stopAudioEngine();
   game = {
     state: STATES.IDLE,
-    stage: 1,
+    stage: 2,
     stateStartMs: millis(),
     roundStartMs: null,
     currentOrder: null,
@@ -410,6 +510,7 @@ function resetGame() {
     mistakes: 0,
     tangles: 0,
     ordersDone: 0,
+    ordersThisLevel: 0,
     wrongStationHits: 0,
     armSwitches: 0,
     combo: 0,
@@ -425,6 +526,8 @@ function resetGame() {
     guidePopup: { open: false, step: null, openedMs: 0 },
     serveArmChosen: false,
     mode: "normal",
+    startChoice: "normal",
+    tutorialFinale: { active: false, phase: null },
     practiceStep: "coffee",
     rushEvent: null,
     nextRushEventMs: millis() + random(14000, 22000),
@@ -488,7 +591,112 @@ function labelUnlockValue(v) {
   return `${v}`.charAt(0).toUpperCase() + `${v}`.slice(1);
 }
 
+function stageMeta(stage = game?.stage ?? 2) {
+  return STAGE_META[stage] || STAGE_META[2];
+}
+
+function isTutorialStage(stage = game?.stage ?? 2) {
+  return stage === 0;
+}
+
+function startNormalRun() {
+  game.mode = "normal";
+  game.stage = 2;
+  game.roundStartMs = millis();
+  game.ordersThisLevel = 0;
+  game.state = STATES.NEW_ORDER;
+  game.stateStartMs = millis();
+  playSfx("start");
+}
+
+function startTutorialRun() {
+  game.mode = "normal";
+  game.stage = 0;
+  game.roundStartMs = null;
+  game.ordersDone = 0;
+  game.ordersThisLevel = 0;
+  game.score = 0;
+  game.combo = 0;
+  game.bestCombo = 0;
+  game.state = STATES.NEW_ORDER;
+  game.stateStartMs = millis();
+  game.narrativeToast = {
+    text: "Tutorial loaded: learn the flow, then continue to Level 2.",
+    untilMs: millis() + 2600,
+  };
+  playSfx("success");
+}
+
+function startTutorialFinale() {
+  releaseAllArms();
+  game.currentOrder = null;
+  game.challenge = null;
+  game.hoverStation = null;
+  game.serveArmChosen = false;
+  game.lockedArm = null;
+  game.tutorialFinale = { active: true, phase: "calm" };
+  game.state = STATES.TUTORIAL_RECOVERY;
+  game.stateStartMs = millis();
+  game.stress = 78;
+  game.tangleMeter = 72;
+  game.narrativeToast = {
+    text: "Tutorial finale: hold R to lower stress and tangle.",
+    untilMs: millis() + 2600,
+  };
+  maybeOpenLevelOneGuide("tutorial_calm");
+}
+
+function startTutorialUntangleLesson() {
+  game.tutorialFinale = { active: true, phase: "untangle" };
+  game.lockedArm = random(["topLeft", "topRight", "bottomLeft", "bottomRight"]);
+  game.stress = 90;
+  game.tangleMeter = 100;
+  game.untangleProgress = 0;
+  game.state = STATES.TANGLED;
+  game.stateStartMs = millis();
+  game.narrativeToast = {
+    text: "Now untangle the knot: spam SPACE until the bar fills.",
+    untilMs: millis() + 2600,
+  };
+  maybeOpenLevelOneGuide("tutorial_untangle");
+}
+
+function finishTutorialFinale() {
+  game.tutorialFinale = { active: false, phase: null };
+  game.lockedArm = null;
+  game.nextStage = 2;
+  game.state = STATES.LEVEL_COMPLETE;
+  game.stateStartMs = millis();
+  playSfx("start");
+}
+
+function updateTutorialFinale() {
+  if (!game.tutorialFinale?.active) return;
+  if (game.tutorialFinale.phase !== "calm") return;
+  const dt = deltaTime / 1000;
+  if (keyIsDown(82)) {
+    game.stress = max(18, game.stress - 44 * dt);
+    game.tangleMeter = max(18, game.tangleMeter - 52 * dt);
+    addParticles(width - 200, 50, color(100, 200, 255), 2);
+  } else {
+    game.stress = min(92, game.stress + 8 * dt);
+    game.tangleMeter = min(94, game.tangleMeter + 6 * dt);
+  }
+  if (game.stress <= 35 && game.tangleMeter <= 35) {
+    startTutorialUntangleLesson();
+  }
+}
+
+function beginSelectedRun() {
+  if (game.startChoice === "tutorial") {
+    startTutorialRun();
+    return;
+  }
+  startNormalRun();
+}
+
 function startShift() {
+  game.startChoice = "normal";
   game.state = STATES.TRANSITION;
   game.stateStartMs = millis();
 
@@ -496,6 +704,17 @@ function startShift() {
   ensureAudioUnlocked();
   startAudioEngine();
   playSfx("start");
+}
+
+function startTutorialShift() {
+  game.startChoice = "tutorial";
+  game.state = STATES.TRANSITION;
+  game.stateStartMs = millis();
+
+  hideStartOverlay();
+  ensureAudioUnlocked();
+  startAudioEngine();
+  playSfx("success");
 }
 
 function showStartOverlay() {
@@ -659,8 +878,10 @@ function draw() {
     return;
   }
 
+  const tutorialNoShake =
+    game.mode !== "practice" && isTutorialStage() && game.tutorialFinale?.active;
   let shakeMag = 0;
-  if (game.stress > 50 || game.tangleMeter > 50) {
+  if (!tutorialNoShake && (game.stress > 50 || game.tangleMeter > 50)) {
     // 只有超过 50 才计算震动，否则保持 0
     shakeMag = map(max(game.stress, game.tangleMeter), 50, 100, 0.5, 2);
   }
@@ -890,6 +1111,9 @@ function easeOutCubic(x) {
 
 function enterPracticeSelect() {
   hideStartOverlay();
+  ensureAudioUnlocked();
+  startAudioEngine();
+  playSfx("select");
   game.mode = "practice";
   game.state = STATES.PRACTICE_SELECT;
   game.stateStartMs = millis();
@@ -1130,47 +1354,185 @@ function drawPowerUpBar() {
 
 function drawPracticeSelect() {
   drawBackdrop();
-  fill(42, 28, 18, 130);
+  fill(8, 13, 20, 178);
   rect(0, 0, width, height);
-  const w = min(620, width * 0.72),
-    h = 360,
+  const w = min(980, width * 0.84),
+    h = min(560, height * 0.78),
     x = width * 0.5 - w * 0.5,
     y = height * 0.5 - h * 0.5;
-  setShadow(18, "rgba(66,42,22,0.26)");
-  fill(252, 245, 232, 246);
-  rect(x, y, w, h, 24);
+  const sz = sceneScale();
+  setShadow(24, "rgba(0,0,0,0.34)");
+  fill(15, 23, 37, 236);
+  rect(x, y, w, h, 28);
   clearShadow();
-  fill(96, 64, 39);
-  textAlign(CENTER, TOP);
+  noStroke();
+  fill(246, 177, 92, 32);
+  rect(x + 20, y + 20, w - 40, h - 40, 24);
+
+  fill(237, 231, 222);
+  textAlign(LEFT, TOP);
   textStyle(BOLD);
-  textSize(34);
-  text("Practice Mode", width * 0.5, y + 26);
+  textSize(13 * sz);
+  text("TRAINING MODE", x + 36 * sz, y + 28 * sz);
+  textSize(34 * sz);
+  text("Practice Lab", x + 36 * sz, y + 52 * sz);
+
   textStyle(NORMAL);
-  fill(133, 98, 68);
-  textSize(16);
-  text("Pick one challenge to drill (no round timer).", width * 0.5, y + 72);
-  const items = [
-    "1  Coffee Timing",
-    "2  Milk Hold",
-    "3  Ice Taps",
-    "4  Syrup Precision",
-    "5  Foam Sequence",
-  ];
+  fill(213, 202, 190);
+  textSize(15 * sz);
+  text(
+    "Choose a focused station drill. No timer, no rush events, just one mechanic at a time.",
+    x + 36 * sz,
+    y + 98 * sz,
+    w - 72 * sz,
+    52 * sz,
+  );
+
+  const items = practiceMenuItems();
+  const cols = width > 860 ? 2 : 1;
+  const gap = 18 * sz;
+  const cardW = (w - 72 * sz - gap * (cols - 1)) / cols;
+  const cardH = width > 860 ? 132 * sz : 92 * sz;
+  const startY = y + 162 * sz;
+
   for (let i = 0; i < items.length; i++) {
-    const iy = y + 116 + i * 42;
-    fill(244, 232, 214, 230);
-    rect(x + 60, iy, w - 120, 32, 12);
-    fill(107, 77, 53);
-    textAlign(LEFT, CENTER);
-    textSize(16);
+    const col = i % cols;
+    const row = floor(i / cols);
+    const cardX = x + 36 * sz + col * (cardW + gap);
+    const cardY = startY + row * (cardH + gap);
+    const isHover =
+      mouseX >= cardX &&
+      mouseX <= cardX + cardW &&
+      mouseY >= cardY &&
+      mouseY <= cardY + cardH;
+
+    fill(
+      isHover ? items[i].accent[0] : 255,
+      isHover ? items[i].accent[1] : 255,
+      isHover ? items[i].accent[2] : 255,
+      isHover ? 220 : 38,
+    );
+    rect(cardX, cardY, cardW, cardH, 22);
+
+    fill(247, 241, 232, isHover ? 250 : 236);
+    rect(cardX + 1.5, cardY + 1.5, cardW - 3, cardH - 3, 21);
+
+    fill(items[i].accent[0], items[i].accent[1], items[i].accent[2], 208);
+    rect(cardX + 16 * sz, cardY + 16 * sz, 72 * sz, 28 * sz, 999);
+
+    fill(23, 18, 14);
     textStyle(BOLD);
-    text(items[i], x + 78, iy + 16);
+    textAlign(CENTER, CENTER);
+    textSize(12 * sz);
+    text(`${items[i].key}`, cardX + 36 * sz, cardY + 30 * sz);
+    textAlign(LEFT, TOP);
+    text(items[i].tag, cardX + 48 * sz, cardY + 21 * sz);
+
+    fill(55, 37, 24);
+    textSize(22 * sz);
+    text(items[i].title, cardX + 18 * sz, cardY + 56 * sz);
+
+    textStyle(NORMAL);
+    fill(101, 74, 54);
+    textSize(14 * sz);
+    text(items[i].desc, cardX + 18 * sz, cardY + 84 * sz, cardW - 36 * sz, 40 * sz);
   }
-  textStyle(NORMAL);
-  fill(133, 98, 68);
+
+  const footerY = y + h - 54 * sz;
+  fill(255, 246, 233, 48);
+  rect(x + 36 * sz, footerY - 10 * sz, w - 72 * sz, 36 * sz, 999);
+  fill(228, 217, 203);
   textAlign(CENTER, CENTER);
-  textSize(13);
-  text("Press number key to start, or ESC to go back", width * 0.5, y + h - 30);
+  textSize(13 * sz);
+  text(
+    "Click a drill card or press 1-5 to start. Press ESC to return to the main menu.",
+    width * 0.5,
+    footerY + 8 * sz,
+  );
+}
+
+function practiceMenuItems() {
+  return [
+    {
+      key: 1,
+      step: "coffee",
+      tag: "TIMING",
+      title: "Coffee Timing",
+      desc: "Hold the espresso flow steady and finish the bar cleanly.",
+      accent: [222, 149, 87],
+    },
+    {
+      key: 2,
+      step: "milk",
+      tag: "CONTROL",
+      title: "Milk Hold",
+      desc: "Balance long holds without letting the progress decay.",
+      accent: [197, 149, 103],
+    },
+    {
+      key: 3,
+      step: "ice",
+      tag: "RHYTHM",
+      title: "Ice Taps",
+      desc: "Alternate the keys cleanly to keep the cubes dropping fast.",
+      accent: [101, 178, 196],
+    },
+    {
+      key: 4,
+      step: "syrup",
+      tag: "PRECISION",
+      title: "Syrup Precision",
+      desc: "Hit the rhythm window on beat and avoid wasted pumps.",
+      accent: [241, 179, 96],
+    },
+    {
+      key: 5,
+      step: "foam",
+      tag: "BALANCE",
+      title: "Foam Sequence",
+      desc: "Keep the marker centered while the challenge fights back.",
+      accent: [145, 196, 163],
+    },
+  ];
+}
+
+function practiceCardRects() {
+  const sz = sceneScale();
+  const w = min(980, width * 0.84);
+  const h = min(560, height * 0.78);
+  const x = width * 0.5 - w * 0.5;
+  const y = height * 0.5 - h * 0.5;
+  const items = practiceMenuItems();
+  const cols = width > 860 ? 2 : 1;
+  const gap = 18 * sz;
+  const cardW = (w - 72 * sz - gap * (cols - 1)) / cols;
+  const cardH = width > 860 ? 132 * sz : 92 * sz;
+  const startY = y + 162 * sz;
+  return items.map((item, i) => {
+    const col = i % cols;
+    const row = floor(i / cols);
+    return {
+      ...item,
+      x: x + 36 * sz + col * (cardW + gap),
+      y: startY + row * (cardH + gap),
+      w: cardW,
+      h: cardH,
+    };
+  });
+}
+
+function startPracticeStep(step) {
+  playSfx("success");
+  startPracticeMode(step);
+}
+
+function pointInRect(px, py, rectData) {
+  return (
+    px >= rectData.x &&
+    px <= rectData.x + rectData.w &&
+    py >= rectData.y &&
+    py <= rectData.y + rectData.h
+  );
 }
 
 function drawLevelComplete() {
@@ -1196,7 +1558,13 @@ function drawLevelComplete() {
   textAlign(CENTER, CENTER);
   textStyle(BOLD);
   textSize(48);
-  text(`Level ${game.stage} Complete!`, width * 0.5, panelY + 50);
+  text(
+    game.stage === 0
+      ? "Tutorial Complete!"
+      : `${stageMeta(game.stage).label} Complete!`,
+    width * 0.5,
+    panelY + 50,
+  );
 
   textStyle(NORMAL);
 
@@ -1209,24 +1577,12 @@ function drawLevelComplete() {
   textAlign(CENTER, CENTER);
   textSize(24);
   textStyle(BOLD);
-  const levelDescriptions = [
-    "Tutorial: Single-Step Recipes",
-    "Beginner: Two-Step Multitasking",
-    "Intermediate: Three-Step Challenges",
-    "Expert: Four-Step Mastery",
-  ];
-  text(levelDescriptions[game.stage - 1], width * 0.5, infoY + 30);
+  text(stageMeta(game.stage).title, width * 0.5, infoY + 30);
 
   textStyle(NORMAL);
   fill(90, 110, 150);
   textSize(16);
-  const levelStats = [
-    "Perfect! You've mastered basic operations.",
-    "Great! You're handling multitasking well.",
-    "Excellent! Complex coordination achieved.",
-    "Outstanding! You've reached the peak!",
-  ];
-  text(levelStats[game.stage - 1], width * 0.5, infoY + 70);
+  text(stageMeta(game.stage).completeText, width * 0.5, infoY + 70);
 
   // Progress to next button
   const buttonY = panelY + panelH - 80;
@@ -1238,7 +1594,13 @@ function drawLevelComplete() {
   textSize(20);
   textStyle(BOLD);
 
-  text("Press SPACE or ENTER to Continue", width * 0.5, buttonY + 25);
+  text(
+    game.nextStage
+      ? `Press SPACE or ENTER to Continue to ${stageMeta(game.nextStage).label}`
+      : "Press SPACE or ENTER to Continue",
+    width * 0.5,
+    buttonY + 25,
+  );
 }
 
 function drawMorphTransitionOctopus(x, y, t, scaleMul = 1) {
@@ -1300,13 +1662,16 @@ function drawMorphTransitionOctopus(x, y, t, scaleMul = 1) {
 function updateGlobalMeters() {
   if (game.state === STATES.GAME_OVER) return;
   const dt = deltaTime / 1000;
-  const isTutorialStage = game.mode !== "practice" && game.stage === 1;
+  const tutorialStage = game.mode !== "practice" && isTutorialStage();
+  const tutorialFinaleActive = tutorialStage && game.tutorialFinale?.active;
 
   // 1. 压力系统：这是 Tangle 的动力源
   updateStress();
 
-  if (isTutorialStage) {
-    // Level 1 tutorial: no stress/tangle pressure.
+  if (tutorialFinaleActive) {
+    updateTutorialFinale();
+  } else if (tutorialStage) {
+    // Level 0 tutorial: no stress/tangle pressure.
     game.stress = 0;
     game.tangleMeter = 0;
     game.lockedArm = null;
@@ -1340,6 +1705,7 @@ function updateGlobalMeters() {
   const elapsed = game.roundStartMs ? (millis() - game.roundStartMs) / 1000 : 0;
   if (
     game.mode !== "practice" &&
+    !tutorialStage &&
     game.roundStartMs &&
     elapsed >= GAME.durationSec
   ) {
@@ -1355,7 +1721,7 @@ function updateGlobalMeters() {
 function updateState() {
   if (
     game.mode !== "practice" &&
-    game.stage === 1 &&
+    isTutorialStage() &&
     !game.guidePopup.open &&
     game.currentOrder
   ) {
@@ -1367,8 +1733,6 @@ function updateState() {
     case STATES.IDLE:
     case STATES.PRACTICE_SELECT:
     case STATES.HOW_TO_PLAY:
-      break;
-
     case STATES.TRANSITION:
       if (millis() - game.stateStartMs >= TRANSITION_DURATION_MS) {
         game.state = STATES.HOW_TO_PLAY; // 动画播完，弹出说明书
@@ -1381,7 +1745,7 @@ function updateState() {
       game.state = STATES.ARM_CONTROL;
       game.stateStartMs = millis();
       // Start the shift timer once; do not reset between levels/orders.
-      if (game.mode !== "practice" && !game.roundStartMs) {
+      if (game.mode !== "practice" && !isTutorialStage() && !game.roundStartMs) {
         game.roundStartMs = millis();
       }
       break;
@@ -1389,6 +1753,9 @@ function updateState() {
     case STATES.ARM_CONTROL:
       updateArmReach();
       updateTasks();
+      break;
+    case STATES.TUTORIAL_RECOVERY:
+      updateTutorialFinale();
       break;
 
     case STATES.TANGLED:
@@ -1651,6 +2018,7 @@ function completeServeDrink() {
     timeTaken < cmods.speedWindowSec ? 20 * cmods.speedBonusMul : 0;
   game.score += floor((max(25, serveScore) + rushBonus) * cmods.scoreMul);
   game.ordersDone += 1;
+  game.ordersThisLevel += 1;
   game.serveArmChosen = false;
   releaseAllArms();
   game.combo += 1;
@@ -1663,11 +2031,20 @@ function completeServeDrink() {
     18,
   );
   playSfx("serve");
-  if (game.ordersDone >= game.stage * 5 && game.stage < 4) {
-    game.state = STATES.LEVEL_COMPLETE;
-    game.stateStartMs = millis();
-    game.nextStage = game.stage + 1;
-    playSfx("start");
+  const currentStageMeta = stageMeta(game.stage);
+  if (
+    currentStageMeta.targetOrders !== null &&
+    currentStageMeta.nextStage !== null &&
+    game.ordersThisLevel >= currentStageMeta.targetOrders
+  ) {
+    if (isTutorialStage()) {
+      startTutorialFinale();
+    } else {
+      game.state = STATES.LEVEL_COMPLETE;
+      game.stateStartMs = millis();
+      game.nextStage = currentStageMeta.nextStage;
+      playSfx("start");
+    }
   } else {
     game.state = STATES.ORDER_COMPLETE;
   }
@@ -1675,7 +2052,7 @@ function completeServeDrink() {
 }
 
 function failStep() {
-  if (game.mode !== "practice" && game.stage === 1) return;
+  if (game.mode !== "practice" && isTutorialStage()) return;
   const cmods = getCustomerMods();
   game.tangles += 1;
   game.mistakes += 1;
@@ -1696,7 +2073,7 @@ function failStep() {
 }
 
 function addTangle(stationName, base) {
-  if (game.mode !== "practice" && game.stage === 1) return;
+  if (game.mode !== "practice" && isTutorialStage()) return;
   const mods = getRushModifiers();
   let gain = base;
   const now = millis();
@@ -1732,16 +2109,20 @@ function updateUntangleState() {
     game.tangleMeter = 30; // 保留一点余温
     game.lockedArm = null;
     releaseAllArms(); // 重置所有触角
-    game.state = STATES.ARM_CONTROL; // 恢复工作状态
-    game.stateStartMs = millis();
-    playSfx("success");
+    if (game.tutorialFinale?.active && game.tutorialFinale.phase === "untangle") {
+      finishTutorialFinale();
+    } else {
+      game.state = STATES.ARM_CONTROL; // 恢复工作状态
+      game.stateStartMs = millis();
+      playSfx("success");
+    }
   }
 }
 
 function updateStress() {
   const dt = deltaTime / 1000;
   if (!game.currentOrder || game.state !== STATES.ARM_CONTROL) return;
-  if (game.mode !== "practice" && game.stage === 1) {
+  if (game.mode !== "practice" && isTutorialStage()) {
     game.stress = 0;
     return;
   }
@@ -1782,7 +2163,7 @@ function doSegmentsIntersect(p1, p2, p3, p4) {
 
 function checkTentacleCrossing() {
   if (game.state !== STATES.ARM_CONTROL) return;
-  if (game.mode !== "practice" && game.stage === 1) return;
+  if (game.mode !== "practice" && isTutorialStage()) return;
 
   const keys = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
 
@@ -1809,7 +2190,7 @@ function checkTentacleCrossing() {
 }
 
 function triggerPhysicalTangle() {
-  if (game.mode !== "practice" && game.stage === 1) return;
+  if (game.mode !== "practice" && isTutorialStage()) return;
   game.tangles += 1;
   game.score = max(0, game.score - 15);
   game.stress = constrain(game.stress + 20, 0, 100);
@@ -1835,15 +2216,16 @@ function keyPressed() {
     }
     const map = { 1: "coffee", 2: "milk", 3: "ice", 4: "syrup", 5: "foam" };
     if (map[key]) {
-      startPracticeMode(map[key]);
+      startPracticeStep(map[key]);
       return false;
     }
     return false;
   }
   if (game.state === STATES.LEVEL_COMPLETE) {
     if (key === " " || keyCode === ENTER || key.toUpperCase() === "C") {
-      if (game.nextStage <= 4) {
+      if (game.nextStage) {
         game.stage = game.nextStage;
+        game.ordersThisLevel = 0;
         game.state = STATES.NEW_ORDER;
         game.stateStartMs = millis();
       }
@@ -1851,10 +2233,7 @@ function keyPressed() {
     return false;
   }
   if (game.state === STATES.TRANSITION && (key === " " || keyCode === ENTER)) {
-    if (game.mode !== "practice" && !game.roundStartMs) {
-      game.roundStartMs = millis();
-    }
-    game.state = STATES.NEW_ORDER;
+    game.state = STATES.HOW_TO_PLAY;
     game.stateStartMs = millis();
     return false;
   }
@@ -1904,6 +2283,14 @@ function keyPressed() {
   }
   if (game.state === STATES.IDLE && (key === " " || keyCode === ENTER)) {
     startShift();
+    return false;
+  }
+  if (game.state === STATES.IDLE && key.toUpperCase() === "T") {
+    startTutorialShift();
+    return false;
+  }
+  if (game.state === STATES.IDLE && key.toUpperCase() === "P") {
+    enterPracticeSelect();
     return false;
   }
   if (game.state === STATES.GAME_OVER && key === " ") {
@@ -1994,9 +2381,17 @@ function mousePressed() {
       mouseY > btnY &&
       mouseY < btnY + btnH
     ) {
-      game.state = STATES.NEW_ORDER;
-      game.stateStartMs = millis();
-      playSfx("success");
+      beginSelectedRun();
+      return false;
+    }
+    return false;
+  }
+  if (game.state === STATES.PRACTICE_SELECT) {
+    for (const item of practiceCardRects()) {
+      if (pointInRect(mouseX, mouseY, item)) {
+        startPracticeStep(item.step);
+        return false;
+      }
     }
     return false;
   }
@@ -2011,32 +2406,8 @@ function mousePressed() {
       }
     }
   }
-  if (game.state === STATES.HOW_TO_PLAY) {
-    const sz = sceneScale();
-    const btnW = 280 * sz,
-      btnH = 60 * sz;
-    const btnX = width * 0.5 - btnW * 0.5;
-    const btnY = height * 0.5 + 270 * sz - 100 * sz; // 对应 draw 里的 btnY
-
-    if (
-      mouseX > btnX &&
-      mouseX < btnX + btnW &&
-      mouseY > btnY &&
-      mouseY < btnY + btnH
-    ) {
-      // 确认后进入开场过渡动画
-      game.state = STATES.TRANSITION;
-      game.stateStartMs = millis();
-      playSfx("start");
-    }
-    return false;
-  }
-
   if (game.state === STATES.TRANSITION) {
-    if (game.mode !== "practice" && !game.roundStartMs) {
-      game.roundStartMs = millis();
-    }
-    game.state = STATES.NEW_ORDER;
+    game.state = STATES.HOW_TO_PLAY;
     game.stateStartMs = millis();
     return false;
   }
@@ -2583,6 +2954,7 @@ function sceneScale() {
 
 function drawHeader() {
   const sz = sceneScale();
+  const meta = stageMeta(game.stage);
   const elapsed = game.roundStartMs
     ? floor((millis() - game.roundStartMs) / 1000)
     : 0;
@@ -2595,7 +2967,7 @@ function drawHeader() {
   drawTangleBar(x, 25 * sz, w, 100 * sz);
 
   // --- 下方 Shift 面板位置同步下移 ---
-  const h = 130 * sz;
+  const h = 158 * sz;
   const y = 135 * sz;
 
   setShadow(12, "rgba(66,42,22,0.18)");
@@ -2622,12 +2994,13 @@ function drawHeader() {
 
   textAlign(LEFT, TOP);
   textSize(16 * sz);
+  text(`${meta.label}`, x + 20 * sz, y + 56 * sz);
   text(
-    `Orders: ${game.ordersDone}/${GAME.targetOrders}`,
+    `Orders: ${game.ordersThisLevel}/${meta.targetOrders ?? "--"}`,
     x + 20 * sz,
-    y + 60 * sz,
+    y + 82 * sz,
   );
-  text(`Score: ${floor(game.score)}`, x + 20 * sz, y + 85 * sz);
+  text(`Score: ${floor(game.score)}`, x + 20 * sz, y + 108 * sz);
 
   fill(200, 100, 80);
   text("Stress", x + 180 * sz, y + 60 * sz);
@@ -2756,13 +3129,20 @@ function drawOrderCard() {
 
 function drawGuidePanel() {
   let msg = "";
-  const stage = game.stage || 1;
+  const stage = game.stage ?? 2;
   if (game.state === STATES.IDLE) msg = "Waiting for customer...";
+  if (
+    game.state === STATES.TUTORIAL_RECOVERY &&
+    game.tutorialFinale?.active &&
+    game.tutorialFinale.phase === "calm"
+  ) {
+    msg = "TUTORIAL: HOLD [R] TO LOWER STRESS & TANGLE!";
+  }
   if (game.state === STATES.ARM_CONTROL) {
     msg =
-      stage === 1
-        ? "DRAG TO STATIONS & FOLLOW KEYS!"
-        : `STAGE ${stage}: MULTITASKING! MAINTAIN ALL KEYS!`;
+      stage === 0
+        ? "LEVEL 0: FOLLOW THE TUTORIAL STEPS!"
+        : `${stageMeta(stage).label.toUpperCase()}: MAINTAIN YOUR FLOW!`;
   }
   if (game.state === STATES.TANGLED) msg = "OH NO! TANGLED!";
   if (game.state === STATES.UNTANGLE) msg = "MASH [SPACE] TO UNTANGLE!";
@@ -2789,7 +3169,7 @@ function drawGuidePanel() {
   fill(90, 60, 40);
   textAlign(CENTER, CENTER);
   // 字号微调，确保长句子不出框
-  textSize(stage === 1 ? 20 * sz : 17 * sz);
+  textSize(stage === 0 ? 18 * sz : 17 * sz);
   textStyle(BOLD);
   text(msg, width * 0.5, y + h * 0.53);
   textStyle(NORMAL);
@@ -3075,7 +3455,7 @@ function drawGameOver() {
   textSize(20);
   textStyle(BOLD);
   text(
-    `Level Reached: ${game.levelAtTimeout || game.stage}/4   |   Orders: ${game.ordersDone}   |   Final Score: ${floor(game.score)}`,
+    `Highest Level: ${stageMeta(game.levelAtTimeout || game.stage).label} / Level 5   |   Orders: ${game.ordersDone}   |   Final Score: ${floor(game.score)}`,
     width * 0.5,
     statsY + 28,
   );
@@ -3382,8 +3762,30 @@ function levelOneGuideContent(step) {
       ],
     };
   }
+  if (step === "tutorial_calm") {
+    return {
+      title: "Stress Recovery",
+      lines: [
+        "Tutorial orders are done. Now the bar gets chaotic on purpose.",
+        "Stress and Tangle are both rising. Do not start anything else yet.",
+        "Hold [R] to calm down and bring both meters back under control.",
+        "Keep holding until the warning pressure drops and the next lesson begins.",
+      ],
+    };
+  }
+  if (step === "tutorial_untangle") {
+    return {
+      title: "Untangle Drill",
+      lines: [
+        "The knot has fully triggered and one arm is locked.",
+        "Spam [SPACE] to fill the Untangle Progress bar as fast as you can.",
+        "You can also move the mouse while untangling to speed recovery up.",
+        "Once the knot breaks, the tutorial is complete and Level 2 unlocks.",
+      ],
+    };
+  }
   return {
-    title: "Level 1 Tutorial",
+    title: "Tutorial Step",
     lines: ["Follow the station instruction to complete this step."],
   };
 }
@@ -3429,7 +3831,7 @@ function drawChallengeGuidePopup() {
   fill(118, 86, 58);
   textSize(20);
   textStyle(NORMAL);
-  text("Level 1 Tutorial Tip", p.x + p.w - 250, p.y + 29);
+  text(stageMeta(game.stage).guideLabel, p.x + p.w - 190, p.y + 29);
 
   fill(82, 58, 41);
   textAlign(LEFT, TOP);

@@ -15,6 +15,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
+  min-height: 100dvh;
   background: linear-gradient(-45deg, var(--bg-1), var(--bg-2), var(--bg-3), #fff7db);
   background-size: 400% 400%;
   animation: gradientBG 15s ease infinite;
@@ -31,8 +32,19 @@ body {
 body {
   display: grid;
   place-items: center;
+  width: 100vw;
+  width: 100dvw;
+  min-width: 100vw;
+  min-width: 100dvw;
   padding: 0;
   overflow: hidden;
+}
+
+#app {
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
 }
 
 #start-overlay {
@@ -137,16 +149,22 @@ body {
   }
 }
 
-#start-button {
+#start-actions {
   position: absolute;
   left: 50%;
   bottom: 8%;
   transform: translateX(-50%);
   z-index: 2;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+#start-button,
+#tutorial-button {
   padding: 14px 42px;
   border: 2px solid rgba(255, 244, 225, 0.88);
   border-radius: 999px;
-  background: linear-gradient(145deg, #c88f5f 0%, #b77845 55%, #8e5c37 100%);
   color: #fff7e9;
   font: 700 22px "Avenir Next", "Trebuchet MS", sans-serif;
   letter-spacing: 0.7px;
@@ -160,22 +178,50 @@ body {
     box-shadow 0.16s ease;
 }
 
-#start-button:hover {
-  filter: brightness(1.06);
-  transform: translateX(-50%) translateY(-2px) scale(1.02);
+#start-button {
+  background: linear-gradient(145deg, #c88f5f 0%, #b77845 55%, #8e5c37 100%);
 }
 
-#start-button:active {
-  transform: translateX(-50%) translateY(0) scale(0.99);
+#tutorial-button {
+  background: linear-gradient(145deg, #6ea7d5 0%, #4f84b3 55%, #345e88 100%);
+}
+
+#start-button:hover,
+#tutorial-button:hover {
+  filter: brightness(1.06);
+  transform: translateY(-2px) scale(1.02);
+}
+
+#start-button:hover {
+  filter: brightness(1.06);
+}
+
+#start-button:active,
+#tutorial-button:active {
+  transform: translateY(0) scale(0.99);
   box-shadow:
     0 8px 16px rgba(66, 42, 22, 0.3),
     inset 0 1px 0 rgba(255, 244, 225, 0.32);
 }
 
+@media (max-width: 680px) {
+  #start-actions {
+    flex-direction: column;
+    width: min(320px, 78vw);
+  }
+
+  #start-button,
+  #tutorial-button {
+    width: 100%;
+  }
+}
+
 canvas {
   display: block;
   width: 100vw !important;
+  width: 100dvw !important;
   height: 100vh !important;
+  height: 100dvh !important;
   border-radius: 0;
   box-shadow: none;
   position: relative;
