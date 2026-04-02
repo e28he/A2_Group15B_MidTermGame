@@ -81,6 +81,11 @@ const STAGE_POOLS = {
     "Ice Practice",
     "Syrup Practice",
   ],
+  1: [
+    "Americano",
+    "Milk Sample",
+    "Foam Practice"
+  ],
   2: [
     "Americano",
     "Milk Sample",
@@ -100,8 +105,17 @@ const STAGE_META = {
     summary: "A no-pressure walkthrough for single-step drinks and recovery basics.",
     completeText: "Tutorial complete. You are ready to enter the main shift.",
     targetOrders: 5,
-    nextStage: 2,
+    nextStage: 1,
     guideLabel: "Tutorial Tip",
+  },
+  1: {
+    label: "Level 1",
+    title: "Apprentice: Warm Up",
+    summary: "Put the basics together with gentle pressure.",
+    completeText: "Great job! You've mastered the basic station controls.",
+    targetOrders: 5,
+    nextStage: 2,
+    guideLabel: "Level 1 Tip",
   },
   2: {
     label: "Level 2",
@@ -621,7 +635,7 @@ function startTutorialRun() {
   game.state = STATES.NEW_ORDER;
   game.stateStartMs = millis();
   game.narrativeToast = {
-    text: "Tutorial loaded: learn the flow, then continue to Level 2.",
+    text: "Tutorial loaded: learn the flow, then continue to Level 1.",
     untilMs: millis() + 2600,
   };
   playSfx("success");
@@ -664,7 +678,7 @@ function startTutorialUntangleLesson() {
 function finishTutorialFinale() {
   game.tutorialFinale = { active: false, phase: null };
   game.lockedArm = null;
-  game.nextStage = 2;
+  game.nextStage = 1;
   game.state = STATES.LEVEL_COMPLETE;
   game.stateStartMs = millis();
   playSfx("start");
@@ -1003,25 +1017,27 @@ function drawHowToPlay() {
   textSize(22 * sz);
   fill(150, 80, 40);
   text("1. DRAG", textX, y + 100 * sz);
-  textSize(17 * sz);
+  textSize(18 * sz); // Unified to 18
   fill(100, 70, 50);
   textStyle(NORMAL);
   text("Move tentacles to the required stations.", textX, y + 130 * sz);
 
   // 第二步
+  textSize(22 * sz);
   textStyle(BOLD);
   fill(150, 80, 40);
   text("2. OPERATE", textX, y + 180 * sz);
-  textSize(17 * sz);
+  textSize(18 * sz); // Unified to 18
   fill(100, 70, 50);
   textStyle(NORMAL);
   text("Press/Hold keys to fill the progress bars.", textX, y + 210 * sz);
 
   // 第三步
+  textSize(22 * sz);
   textStyle(BOLD);
   fill(200, 70, 50);
   text("3. MANAGE STRESS", textX, y + 260 * sz);
-  textSize(17 * sz);
+  textSize(18 * sz); // Unified to 18
   fill(100, 70, 50);
   textStyle(NORMAL);
   text(
@@ -1581,23 +1597,26 @@ function drawLevelComplete() {
 
   textStyle(NORMAL);
   fill(90, 110, 150);
-  textSize(16);
+  textSize(20);
   text(stageMeta(game.stage).completeText, width * 0.5, infoY + 70);
 
   // Progress to next button
   const buttonY = panelY + panelH - 80;
   fill(87, 153, 222);
-  rect(panelX + panelW * 0.2, buttonY, panelW * 0.6, 50, 12);
+  rect(panelX + panelW * 0.1, buttonY, panelW * 0.8, 50, 12); 
 
   fill(255);
   textAlign(CENTER, CENTER);
   textSize(20);
   textStyle(BOLD);
 
+  // Dynamically switch instruction text based on stage
+  const actionText = game.stage === 0 ? "Press ENTER" : "Press SPACE or ENTER";
+
   text(
     game.nextStage
-      ? `Press SPACE or ENTER to Continue to ${stageMeta(game.nextStage).label}`
-      : "Press SPACE or ENTER to Continue",
+      ? `${actionText} to Continue to ${stageMeta(game.nextStage).label}`
+      : `${actionText} to Continue`,
     width * 0.5,
     buttonY + 25,
   );
@@ -1913,7 +1932,7 @@ function updateTasks() {
           task.progress - task.speed * 0.6 * stressPenalty * dt,
         );
       }
-    } // <--- 你之前漏掉的是这个关掉 balance 的括号
+    } 
     else if (task.type === "rhythm") {
       // 压力大时，节拍会变得不稳定（稍微加快）
       task.timer += dt * 1000 * map(game.stress, 0, 100, 1.0, 1.4);
@@ -2095,24 +2114,17 @@ function addTangle(stationName, base) {
 function updateUntangleState() {
   const dt = deltaTime / 1000;
 
-  // 方法1：鼠标拖拽解开（如果鼠标移动距离大，增加进度）
-  const mouseDist = dist(mouseX, mouseY, pmouseX, pmouseY);
-  if (mouseIsPressed) {
-    game.untangleProgress += mouseDist * 0.1;
-  }
-
-  // 进度自然回落（增加难度）
   game.untangleProgress = max(0, game.untangleProgress - 15 * dt);
 
   if (game.untangleProgress >= 100) {
-    // 解开成功！
-    game.tangleMeter = 30; // 保留一点余温
+
+    game.tangleMeter = 30;
     game.lockedArm = null;
-    releaseAllArms(); // 重置所有触角
+    releaseAllArms(); 
     if (game.tutorialFinale?.active && game.tutorialFinale.phase === "untangle") {
       finishTutorialFinale();
     } else {
-      game.state = STATES.ARM_CONTROL; // 恢复工作状态
+      game.state = STATES.ARM_CONTROL;
       game.stateStartMs = millis();
       playSfx("success");
     }
@@ -2209,11 +2221,18 @@ function triggerPhysicalTangle() {
 function keyPressed() {
   game.noInputSince = millis();
   ensureAudioUnlocked();
-  if (game.state === STATES.PRACTICE_SELECT) {
-    if (keyCode === ESCAPE) {
+  
+  // 全局 ESC 退出处理
+  if (keyCode === ESCAPE) {
+    if (game.guidePopup && game.guidePopup.open) {
+      closeChallengeGuide();
+    } else {
       resetGame();
-      return false;
     }
+    return false;
+  }
+
+  if (game.state === STATES.PRACTICE_SELECT) {
     const map = { 1: "coffee", 2: "milk", 3: "ice", 4: "syrup", 5: "foam" };
     if (map[key]) {
       startPracticeStep(map[key]);
@@ -2221,8 +2240,14 @@ function keyPressed() {
     }
     return false;
   }
+  
   if (game.state === STATES.LEVEL_COMPLETE) {
-    if (key === " " || keyCode === ENTER || key.toUpperCase() === "C") {
+    // Prevent accidental spacebar skipping if coming from tutorial untangle
+    const isValidKey = game.stage === 0 
+      ? (keyCode === ENTER) 
+      : (key === " " || keyCode === ENTER || key.toUpperCase() === "C");
+
+    if (isValidKey) {
       if (game.nextStage) {
         game.stage = game.nextStage;
         game.ordersThisLevel = 0;
@@ -2232,18 +2257,14 @@ function keyPressed() {
     }
     return false;
   }
+  
   if (game.state === STATES.TRANSITION && (key === " " || keyCode === ENTER)) {
     game.state = STATES.HOW_TO_PLAY;
     game.stateStartMs = millis();
     return false;
   }
   if (game.guidePopup.open) {
-    if (
-      keyCode === ESCAPE ||
-      keyCode === ENTER ||
-      key === " " ||
-      key.toUpperCase() === "C"
-    ) {
+    if (keyCode === ENTER || key === " " || key.toUpperCase() === "C") {
       closeChallengeGuide();
     }
     return false;
@@ -2323,10 +2344,9 @@ function keyPressed() {
         task.type === "balance" &&
         (k === task.key || keyCode === 72)
       ) {
-        // 修复：增加推力补偿，确保高压力下也能把游标顶上去
         const pushPower = task.push * map(game.stress, 0, 100, 1.0, 1.4);
         task.marker = min(100, task.marker + pushPower);
-        playTone(400, 0.05, "sine", 0.01); // 增加一个轻微的按键音反馈
+        playTone(400, 0.05, "sine", 0.01); 
       } else if (task.type === "alternate") {
         if (keyCode === 88 || keyCode === 67) {
           const pressedStr = keyCode === 88 ? "X" : "C";
@@ -2335,10 +2355,9 @@ function keyPressed() {
             task.progress = min(100, task.progress + task.speed);
             task.lastKey = pressedStr;
           }
-          // 删除了“按错扣分”的机制，防止操作系统的长按连发（Key-Repeat）瞬间清空进度条
         }
       } else if (task.type === "rhythm" && (k === task.key || key === " ")) {
-        const diff = min(task.timer, abs(task.beatMs - task.timer)); // Syrup: SPACE Rhythm
+        const diff = min(task.timer, abs(task.beatMs - task.timer)); 
         if (diff <= task.windowMs) {
           task.progress = min(100, task.progress + task.speed);
           task.timer = 0;
@@ -2353,6 +2372,7 @@ function keyPressed() {
 function mousePressed() {
   game.noInputSince = millis();
   ensureAudioUnlocked();
+
   if (game.guidePopup.open) {
     const b = guideCloseButtonRect();
     if (
@@ -3038,13 +3058,12 @@ function drawTangleBar(x, y, w, h) {
   textStyle(BOLD);
   text("Tangle", x + 20 * sz, y + 25 * sz);
 
-  // 找回百分比数值
   textAlign(RIGHT, CENTER);
   textSize(16 * sz);
   textStyle(NORMAL);
   text(`${floor(game.tangleMeter)}%`, x + w - 20 * sz, y + 25 * sz);
 
-  // 进度条
+
   const bx = x + 20 * sz,
     by = y + 42 * sz,
     bw = w - 40 * sz,
@@ -3055,11 +3074,10 @@ function drawTangleBar(x, y, w, h) {
   fill(200, 100, 80);
   rect(bx, by, bw * t, bh, 999);
 
-  // --- 核心修改：放大提示文字 (从 12 放大到 15) ---
   fill(120, 90, 70);
-  textSize(15 * sz); // 放大字号
+  textSize(15 * sz); 
   textAlign(LEFT, CENTER);
-  noStroke(); // 确保文字无描边
+  noStroke(); 
   text("80%+ locks one arm | hold R to calm", x + 20 * sz, y + 75 * sz);
 }
 
@@ -3067,11 +3085,10 @@ function drawOrderCard() {
   const sz = sceneScale();
   const stepsCount = game.currentOrder ? game.currentOrder.steps.length + 1 : 1;
 
-  // --- 缩短框架高度 (h 从 380 降至 330)，让整体往上提 ---
   const x = 25 * sz;
   const y = 25 * sz;
   const w = 380 * sz;
-  const h = (180 + stepsCount * 45) * sz; // 动态高度，更紧凑
+  const h = (180 + stepsCount * 45) * sz; 
 
   setShadow(15, "rgba(66,42,22,0.18)");
   stroke(180, 140, 100);
@@ -3085,17 +3102,19 @@ function drawOrderCard() {
   textAlign(LEFT, TOP);
   textSize(22 * sz);
   textStyle(BOLD);
+  // 顶部标题 (Y = 25)
   text("Current Order", x + 25 * sz, y + 25 * sz);
 
   if (!game.currentOrder) return;
 
-  // --- 饮料名称放大 (28 -> 38) ---
   fill(130, 80, 40);
   textSize(38 * sz);
-  text(game.currentOrder.drink, x + 25 * sz, y + 65 * sz);
+  // 修正：将 Y 坐标改为 58，让它在标题和标签之间完美居中！
+  text(game.currentOrder.drink, x + 25 * sz, y + 58 * sz);
 
   const cmods = getCustomerMods();
   fill(cmods.color[0], cmods.color[1], cmods.color[2]);
+  // 底部标签 (Y = 115)
   rect(x + 25 * sz, y + 115 * sz, 140 * sz, 32 * sz, 999);
   fill(255);
   textSize(16 * sz);
@@ -3119,7 +3138,6 @@ function drawOrderCard() {
       15 * sz,
     );
 
-    // --- 步骤文字放大 (18 -> 22) ---
     fill(80, 50, 40);
     textSize(22 * sz);
     textStyle(BOLD);
@@ -3152,8 +3170,13 @@ function drawGuidePanel() {
   if (!msg) return;
 
   const sz = sceneScale();
-  // --- 宽度收窄 (从 680 减至 460) 确保不重叠 ---
-  const w = 460 * sz;
+  
+  // 测量文字长度自适应宽度
+  textSize(stage === 0 ? 18 * sz : 17 * sz);
+  textStyle(BOLD);
+  const textW = textWidth(msg);
+  const w = textW + (80 * sz); // 增加足够的安全内边距
+  
   const h = 55 * sz;
   const x = width * 0.5 - w * 0.5;
   const y = 15 * sz;
@@ -3168,9 +3191,6 @@ function drawGuidePanel() {
   noStroke();
   fill(90, 60, 40);
   textAlign(CENTER, CENTER);
-  // 字号微调，确保长句子不出框
-  textSize(stage === 0 ? 18 * sz : 17 * sz);
-  textStyle(BOLD);
   text(msg, width * 0.5, y + h * 0.53);
   textStyle(NORMAL);
 }
@@ -3697,6 +3717,7 @@ function maybeOpenLevelOneGuide(step) {
   if (game.seenGuides?.[step]) return;
   game.seenGuides[step] = true;
   game.guidePopup = { open: true, step, openedMs: millis() };
+  
 }
 
 function levelOneGuideContent(step) {
@@ -3704,7 +3725,7 @@ function levelOneGuideContent(step) {
     return {
       title: "Coffee Challenge",
       lines: [
-        "Drag one arm to COFFEE station.",
+        "Drag one arm to the Coffee station.",
         "Hold [E] continuously to fill the bar.",
         "If you release [E], progress can drop.",
       ],
@@ -3714,7 +3735,7 @@ function levelOneGuideContent(step) {
     return {
       title: "Milk Challenge",
       lines: [
-        "Drag one arm to MILK station.",
+        "Drag one arm to the Milk station.",
         "Tap [T] repeatedly (do not hold).",
         "Keep tapping so the bar does not drain.",
       ],
@@ -3724,7 +3745,7 @@ function levelOneGuideContent(step) {
     return {
       title: "Foam Challenge (Detailed)",
       lines: [
-        "Drag one arm to FOAM station.",
+        "Drag one arm to the Foam station.",
         "Press [H] to push the marker upward.",
         "Goal: keep marker inside GREEN zone while bar fills.",
         "If marker falls too low/high, progress slows or drops.",
@@ -3735,7 +3756,7 @@ function levelOneGuideContent(step) {
     return {
       title: "Ice Challenge",
       lines: [
-        "Drag one arm to ICE station.",
+        "Drag one arm to the Ice station.",
         "Alternate [X] then [C], then [X], then [C].",
         "Pressing the same key twice gives less progress.",
       ],
@@ -3745,7 +3766,7 @@ function levelOneGuideContent(step) {
     return {
       title: "Syrup Challenge (Detailed)",
       lines: [
-        "Drag one arm to SYRUP station.",
+        "Drag one arm to the Syrup station.",
         "Watch the rhythm pulse/circle timing.",
         "Press [SPACE] right on the beat moment.",
         "Early/late presses reduce progress; accurate timing fills fast.",
@@ -3757,7 +3778,7 @@ function levelOneGuideContent(step) {
       title: "Serve Step",
       lines: [
         "All tasks are done.",
-        "Drag any free arm to SERVE station.",
+        "Drag any free arm to the Serve station.",
         "That submits the drink and completes the order.",
       ],
     };
@@ -3779,8 +3800,7 @@ function levelOneGuideContent(step) {
       lines: [
         "The knot has fully triggered and one arm is locked.",
         "Spam [SPACE] to fill the Untangle Progress bar as fast as you can.",
-        "You can also move the mouse while untangling to speed recovery up.",
-        "Once the knot breaks, the tutorial is complete and Level 2 unlocks.",
+        "Once the knot breaks, the tutorial is complete and Level 1 unlocks.",
       ],
     };
   }
@@ -3831,7 +3851,8 @@ function drawChallengeGuidePopup() {
   fill(118, 86, 58);
   textSize(20);
   textStyle(NORMAL);
-  text(stageMeta(game.stage).guideLabel, p.x + p.w - 190, p.y + 29);
+  textAlign(RIGHT, CENTER); // 将 Tutorial Tip 改为右对齐
+  text(stageMeta(game.stage).guideLabel, p.x + p.w - 24, p.y + 29); // 贴靠右侧边框
 
   fill(82, 58, 41);
   textAlign(LEFT, TOP);
@@ -3841,10 +3862,10 @@ function drawChallengeGuidePopup() {
 
   textStyle(NORMAL);
   textSize(21);
-  let y = p.y + 108;
+  let y = p.y + 115; // 统一标题与内容 “1.” 的行间距
   for (let i = 0; i < c.lines.length; i++) {
     text(`${i + 1}. ${c.lines[i]}`, p.x + 28, y, p.w - 56, 66);
-    y += 56;
+    y += 50;
   }
 
   const b = guideCloseButtonRect();
