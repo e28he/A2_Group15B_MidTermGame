@@ -205,9 +205,6 @@ const POWERUPS = {
   focus: { key: "2", name: "Focus Shot", cost: 100 },
   turbo: { key: "3", name: "Turbo Hand", cost: 90 },
 };
-const AUDIO_MASTER_GAIN = 0.48;
-const AUDIO_MUSIC_GAIN_MUL = 1.45;
-const AUDIO_SFX_GAIN_MUL = 1.65;
 
 let game;
 let audioEngine = null,
@@ -770,7 +767,7 @@ function startAudioEngine() {
   const delay = ctx.createDelay();
   const feedback = ctx.createGain();
   if (!audioEngine) {
-    master.gain.value = AUDIO_MASTER_GAIN;
+    master.gain.value = 0.25;
     delay.delayTime.value = 0.25;
     feedback.gain.value = 0.3;
     delay.connect(feedback);
@@ -819,9 +816,8 @@ function playMusicStep() {
       130.81, 130.81, 146.83, 146.83, 164.81, 164.81, 146.83, 130.81,
     ];
     const i = musicStep % intro.length;
-    playTone(intro[i], 0.22, "sine", 0.028 * AUDIO_MUSIC_GAIN_MUL);
-    if (i % 2 === 0)
-      playTone(bass[i], 0.35, "triangle", 0.018 * AUDIO_MUSIC_GAIN_MUL, 0.02);
+    playTone(intro[i], 0.22, "sine", 0.028);
+    if (i % 2 === 0) playTone(bass[i], 0.35, "triangle", 0.018, 0.02);
     musicStep += 1;
     return;
   }
@@ -829,33 +825,31 @@ function playMusicStep() {
   const bass = [130.81, 130.81, 146.83, 146.83, 164.81, 164.81, 146.83, 130.81];
   const i = musicStep % prog.length;
   const stressTone = map(game.stress, 0, 100, 0, 18);
-  playTone(prog[i] + stressTone, 0.2, "sine", 0.04 * AUDIO_MUSIC_GAIN_MUL);
-  if (i % 2 === 0)
-    playTone(bass[i], 0.3, "triangle", 0.03 * AUDIO_MUSIC_GAIN_MUL, 0.01);
+  playTone(prog[i] + stressTone, 0.2, "sine", 0.04);
+  if (i % 2 === 0) playTone(bass[i], 0.3, "triangle", 0.03, 0.01);
   musicStep += 1;
 }
 
 function playSfx(kind) {
   if (!audioEngine || !audioEngine.ctx) return;
   const mul = getSoundFreqMul();
-  const sfxGain = AUDIO_SFX_GAIN_MUL;
   if (kind === "start") {
-    playTone(392 * mul, 0.15, "triangle", 0.08 * sfxGain);
-    playTone(523.25 * mul, 0.25, "sine", 0.08 * sfxGain, 0.1);
+    playTone(392 * mul, 0.15, "triangle", 0.08);
+    playTone(523.25 * mul, 0.25, "sine", 0.08, 0.1);
   } else if (kind === "select") {
-    playTone(440 * mul, 0.08, "square", 0.02 * sfxGain);
+    playTone(440 * mul, 0.08, "square", 0.02);
   } else if (kind === "success") {
-    playTone(523.25 * mul, 0.1, "sine", 0.06 * sfxGain);
-    playTone(659.25 * mul, 0.15, "triangle", 0.05 * sfxGain, 0.05);
+    playTone(523.25 * mul, 0.1, "sine", 0.06);
+    playTone(659.25 * mul, 0.15, "triangle", 0.05, 0.05);
   } else if (kind === "fail") {
-    playTone(180 * mul, 0.15, "sawtooth", 0.04 * sfxGain);
-    playTone(130 * mul, 0.25, "sawtooth", 0.05 * sfxGain, 0.05);
+    playTone(180 * mul, 0.15, "sawtooth", 0.04);
+    playTone(130 * mul, 0.25, "sawtooth", 0.05, 0.05);
   } else if (kind === "untangle") {
-    playTone((320 + random(-20, 40)) * mul, 0.05, "square", 0.02 * sfxGain);
+    playTone((320 + random(-20, 40)) * mul, 0.05, "square", 0.02);
   } else if (kind === "serve") {
-    playTone(523.25 * mul, 0.1, "triangle", 0.05 * sfxGain);
-    playTone(659.25 * mul, 0.1, "triangle", 0.05 * sfxGain, 0.06);
-    playTone(783.99 * mul, 0.2, "sine", 0.06 * sfxGain, 0.12);
+    playTone(523.25 * mul, 0.1, "triangle", 0.05);
+    playTone(659.25 * mul, 0.1, "triangle", 0.05, 0.06);
+    playTone(783.99 * mul, 0.2, "sine", 0.06, 0.12);
   }
 }
 
@@ -1681,12 +1675,16 @@ function drawMorphTransitionOctopus(x, y, t, scaleMul = 1) {
 function updateGlobalMeters() {
   if (game.state === STATES.GAME_OVER) return;
   const dt = deltaTime / 1000;
+<<<<<<< HEAD
   const tutorialStage = game.mode !== "practice" && isTutorialStage();
   const tutorialFinaleActive = tutorialStage && game.tutorialFinale?.active;
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
 
   // 1. 压力系统：这是 Tangle 的动力源
   updateStress();
 
+<<<<<<< HEAD
   if (tutorialFinaleActive) {
     updateTutorialFinale();
   } else if (tutorialStage) {
@@ -1702,22 +1700,30 @@ function updateGlobalMeters() {
       // 增加一点视觉反馈：按住 R 时冒蓝光
       addParticles(width - 200, 50, color(100, 200, 255), 2);
     }
+=======
+  // 2. 只有按住 R (Calm Brew) 才能救命
+  if (keyIsDown(82)) {
+    game.tangleMeter = max(0, game.tangleMeter - 45 * dt); // 快速下降
+    game.stress = max(0, game.stress - 30 * dt);
+    // 增加一点视觉反馈：按住 R 时冒蓝光
+    addParticles(width - 200, 50, color(100, 200, 255), 2);
+  }
+>>>>>>> parent of 23cdb8e (Update sketch.js)
 
-    // 3. 惩罚：Tangle > 80% 随机锁死一只手
-    if (game.tangleMeter >= 80 && !game.lockedArm) {
-      const arms = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
-      game.lockedArm = random(arms);
-    }
-    if (game.tangleMeter < 60) game.lockedArm = null;
+  // 3. 惩罚：Tangle > 80% 随机锁死一只手
+  if (game.tangleMeter >= 80 && !game.lockedArm) {
+    const arms = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
+    game.lockedArm = random(arms);
+  }
+  if (game.tangleMeter < 60) game.lockedArm = null;
 
-    // 4. 爆表：Tangle 到 100% 强制进入打结状态
-    if (
-      game.tangleMeter >= 100 &&
-      game.state !== STATES.TANGLED &&
-      game.state !== STATES.UNTANGLE
-    ) {
-      triggerPhysicalTangle();
-    }
+  // 4. 爆表：Tangle 到 100% 强制进入打结状态
+  if (
+    game.tangleMeter >= 100 &&
+    game.state !== STATES.TANGLED &&
+    game.state !== STATES.UNTANGLE
+  ) {
+    triggerPhysicalTangle();
   }
 
   // 5. 倒计时检查
@@ -1738,6 +1744,7 @@ function updateGlobalMeters() {
 }
 
 function updateState() {
+<<<<<<< HEAD
   if (
     game.mode !== "practice" &&
     isTutorialStage() &&
@@ -1748,6 +1755,8 @@ function updateState() {
     if (game.state === STATES.SERVE_DRINK) maybeOpenLevelOneGuide("serve");
   }
 
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
   switch (game.state) {
     case STATES.IDLE:
     case STATES.PRACTICE_SELECT:
@@ -2071,7 +2080,10 @@ function completeServeDrink() {
 }
 
 function failStep() {
+<<<<<<< HEAD
   if (game.mode !== "practice" && isTutorialStage()) return;
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
   const cmods = getCustomerMods();
   game.tangles += 1;
   game.mistakes += 1;
@@ -2092,7 +2104,10 @@ function failStep() {
 }
 
 function addTangle(stationName, base) {
+<<<<<<< HEAD
   if (game.mode !== "practice" && isTutorialStage()) return;
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
   const mods = getRushModifiers();
   let gain = base;
   const now = millis();
@@ -2134,10 +2149,13 @@ function updateUntangleState() {
 function updateStress() {
   const dt = deltaTime / 1000;
   if (!game.currentOrder || game.state !== STATES.ARM_CONTROL) return;
+<<<<<<< HEAD
   if (game.mode !== "practice" && isTutorialStage()) {
     game.stress = 0;
     return;
   }
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
 
   // 1. 基础压力：激活的任务越多，章鱼越慌
   const activeCount = Object.keys(game.activeTasks).length;
@@ -2175,7 +2193,10 @@ function doSegmentsIntersect(p1, p2, p3, p4) {
 
 function checkTentacleCrossing() {
   if (game.state !== STATES.ARM_CONTROL) return;
+<<<<<<< HEAD
   if (game.mode !== "practice" && isTutorialStage()) return;
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
 
   const keys = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
 
@@ -2202,7 +2223,10 @@ function checkTentacleCrossing() {
 }
 
 function triggerPhysicalTangle() {
+<<<<<<< HEAD
   if (game.mode !== "practice" && isTutorialStage()) return;
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
   game.tangles += 1;
   game.score = max(0, game.score - 15);
   game.stress = constrain(game.stress + 20, 0, 100);
@@ -2271,7 +2295,7 @@ function keyPressed() {
   }
   if (key.toUpperCase() === "M" && audioEngine?.master) {
     const muted = audioEngine.master.gain.value < 0.01;
-    audioEngine.master.gain.value = muted ? AUDIO_MASTER_GAIN : 0.0001;
+    audioEngine.master.gain.value = muted ? 0.25 : 0.0001;
     return false;
   }
   if (
@@ -2372,6 +2396,7 @@ function keyPressed() {
 function mousePressed() {
   game.noInputSince = millis();
   ensureAudioUnlocked();
+<<<<<<< HEAD
 
   if (game.guidePopup.open) {
     const b = guideCloseButtonRect();
@@ -2385,6 +2410,8 @@ function mousePressed() {
     }
     return false;
   }
+=======
+>>>>>>> parent of 23cdb8e (Update sketch.js)
   if (game.state === STATES.HOW_TO_PLAY) {
     const sz = sceneScale();
     const w = 600 * sz,
@@ -2454,6 +2481,18 @@ function mousePressed() {
       resetGame();
       return false;
     }
+  }
+  if (game.guidePopup.open) {
+    const b = guideCloseButtonRect();
+    if (
+      mouseX > b.x &&
+      mouseX < b.x + b.w &&
+      mouseY > b.y &&
+      mouseY < b.y + b.h
+    ) {
+      closeChallengeGuide();
+    }
+    return false;
   }
   if (game.state === STATES.IDLE) {
     const b = startButtonRect();
@@ -3712,6 +3751,7 @@ function drawIngredientIcon(step, x, y, size) {
   pop();
 }
 
+<<<<<<< HEAD
 function maybeOpenLevelOneGuide(step) {
   if (!step) return;
   if (game.seenGuides?.[step]) return;
@@ -3889,3 +3929,7 @@ function closeChallengeGuide() {
   game.guidePopup.open = false;
   game.guidePopup.step = null;
 }
+=======
+function drawChallengeGuidePopup() {} // Not used in multitask
+function closeChallengeGuide() {}
+>>>>>>> parent of 23cdb8e (Update sketch.js)
